@@ -1,0 +1,174 @@
+{
+  "projectType": "framework",
+  "projectName": "Scrapling",
+  "projectDescription": "An adaptive Web Scraping framework that handles everything from a single request to a full-scale crawl.",
+  "theme": "aspen",
+  "primaryColor": "#6B46C1",
+  "lightColor": "#9F7AEA",
+  "darkColor": "#553C9A",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/architecture",
+              "concepts/fetchers",
+              "concepts/parsing",
+              "concepts/sessions"
+            ]
+          },
+          {
+            "group": "Fetching",
+            "pages": [
+              "fetching/choosing-fetcher",
+              "fetching/static-requests",
+              "fetching/stealthy-mode",
+              "fetching/browser-automation",
+              "fetching/sessions",
+              "fetching/proxy-rotation"
+            ]
+          },
+          {
+            "group": "Parsing & Selection",
+            "pages": [
+              "parsing/selectors",
+              "parsing/navigation",
+              "parsing/extraction",
+              "parsing/adaptive-scraping"
+            ]
+          },
+          {
+            "group": "Spiders",
+            "pages": [
+              "spiders/getting-started",
+              "spiders/architecture",
+              "spiders/requests-responses",
+              "spiders/sessions",
+              "spiders/advanced-features",
+              "spiders/pause-resume"
+            ]
+          },
+          {
+            "group": "CLI & Tools",
+            "pages": [
+              "cli/overview",
+              "cli/interactive-shell",
+              "cli/extract-commands"
+            ]
+          },
+          {
+            "group": "AI Integration",
+            "pages": [
+              "ai/mcp-server",
+              "ai/setup",
+              "ai/capabilities"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/anti-bot-bypass",
+              "guides/cloudflare-turnstile",
+              "guides/handling-blocked-requests",
+              "guides/performance-optimization",
+              "guides/error-handling"
+            ]
+          },
+          {
+            "group": "Tutorials",
+            "pages": [
+              "tutorials/migrating-from-beautifulsoup",
+              "tutorials/migrating-from-scrapy",
+              "tutorials/building-first-spider",
+              "tutorials/real-world-examples"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Fetchers",
+            "pages": [
+              "api/fetcher",
+              "api/stealthy-fetcher",
+              "api/dynamic-fetcher",
+              "api/fetcher-sessions"
+            ]
+          },
+          {
+            "group": "Parsing",
+            "pages": [
+              "api/selector",
+              "api/selectors",
+              "api/response",
+              "api/attributes-handler",
+              "api/text-handler"
+            ]
+          },
+          {
+            "group": "Spiders",
+            "pages": [
+              "api/spider",
+              "api/request",
+              "api/crawler-engine",
+              "api/session-manager",
+              "api/crawl-result"
+            ]
+          },
+          {
+            "group": "Utilities",
+            "pages": [
+              "api/proxy-rotator",
+              "api/custom-types"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Multiple fetcher types (HTTP, Stealth, Browser Automation)",
+    "Scrapy-like Spider framework with concurrent crawling",
+    "Adaptive parsing that survives website structure changes",
+    "Built-in anti-bot bypass and Cloudflare Turnstile solving",
+    "Session management with proxy rotation",
+    "Pause & resume crawls with checkpoints",
+    "Interactive shell and CLI tools",
+    "MCP server for AI-assisted scraping",
+    "CSS, XPath, and text-based selectors",
+    "Async support across all components"
+  ],
+  "publicApiSurface": [
+    "Fetcher.get() / Fetcher.post()",
+    "AsyncFetcher",
+    "StealthyFetcher.fetch()",
+    "DynamicFetcher.fetch()",
+    "FetcherSession",
+    "StealthySession",
+    "DynamicSession",
+    "Selector",
+    "Selectors",
+    "Response",
+    "Spider",
+    "Request",
+    "CrawlResult",
+    "SessionManager",
+    "ProxyRotator",
+    "scrapling shell",
+    "scrapling extract",
+    "scrapling install"
+  ]
+}
