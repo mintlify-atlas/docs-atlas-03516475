@@ -1,0 +1,409 @@
+---
+title: 'Architecture Overview'
+description: 'Understanding Scrapling core architecture and design principles'
+---
+
+## Overview
+
+Scrapling is built on a modular, layered architecture that separates concerns between fetching, parsing, and data extraction. The framework is designed around three core pillars:
+
+<CardGroup cols={3}>
+  <Card title="Fetchers" icon="cloud-arrow-down">
+    Handle HTTP requests and browser automation
+  </Card>
+  <Card title="Parser" icon="code">
+    Process and navigate HTML/XML documents
+  </Card>
+  <Card title="Sessions" icon="circle-nodes">
+    Manage persistent connections and state
+  </Card>
+</CardGroup>
+
+## Core Components
+
+### Fetcher Layer
+
+The fetcher layer provides a unified interface for making web requests, abstracting away the differences between various HTTP clients and browser automation tools.
+
+```python
+from scrapling import Fetcher, StealthyFetcher, DynamicFetcher
+
+# Simple HTTP requests
+response = Fetcher.fetch('https://example.com')
+
+# Browser-based with JavaScript execution
+response = DynamicFetcher.fetch('https://example.com')
+
+# Stealth mode with anti-detection
+response = StealthyFetcher.fetch('https://example.com')
+```
+
+All fetchers return a unified `Response` object that inherits from the `Selector` class, providing immediate parsing capabilities.
+
+### Parser Layer
+
+At the heart of Scrapling is the `Selector` class, built on top of `lxml` for high-performance HTML/XML parsing.
+
+**Key Features:**
+- CSS and XPath selector support
+- Adaptive element relocation (survives page structure changes)
+- Rich text extraction with `TextHandler`
+- Attribute handling with `AttributesHandler`
+- Tree navigation (parent, children, siblings)
+
+```python
+from scrapling import Selector
+
+# From HTML string
+html = '<div class="product"><h2>Item</h2></div>'
+selector = Selector(html)
+
+# CSS selectors
+title = selector.css('.product h2::text').get()
+
+# XPath selectors
+title = selector.xpath('//div[@class="product"]/h2/text()').get()
+
+# Find methods with filters
+product = selector.find('div', class_='product')
+```
+
+### Response System
+
+The `Response` class extends `Selector` with HTTP-specific metadata:
+
+```python
+response = Fetcher.fetch('https://httpbin.org/get')
+
+# HTTP metadata
+print(response.status)          # 200
+print(response.headers)         # Response headers
+print(response.cookies)         # Cookies dict
+print(response.request_headers) # Request headers
+
+# Parsing capabilities (inherited from Selector)
+title = response.css('title::text').get()
+links = response.css('a::attr(href)').getall()
+
+# JSON responses
+data = response.json()
+```
+
+## Architecture Diagram
+
+<CardGroup cols={2}>
+  <Card title="Request Flow">
+    ```
+    User Code
+       ↓
+    Fetcher (Fetcher/DynamicFetcher/StealthyFetcher)
+       ↓
+    Engine Layer (curl_cffi/Playwright)
+       ↓
+    Response (extends Selector)
+       ↓
+    Selector (lxml-based parser)
+    ```
+  </Card>
+  <Card title="Core Inheritance">
+    ```
+    Selector (base parser)
+       ↑
+    Response (adds HTTP metadata)
+       ↑
+    Spider Results (optional spider framework)
+    ```
+  </Card>
+</CardGroup>
+
+## Engine Layer
+
+Scrapling uses different engines depending on the fetcher type:
+
+### Static Engine (curl_cffi)
+
+Used by `Fetcher` and `AsyncFetcher` for fast HTTP requests with browser impersonation:
+
+```python
+# Located in: scrapling/engines/static.py
+from scrapling.fetchers import Fetcher
+
+response = Fetcher.fetch(
+    'https://httpbin.org/get',
+    impersonate='chrome',  # Browser fingerprint
+    stealthy_headers=True, # Auto-generate realistic headers
+    timeout=30,
+    retries=3
+)
+```
+
+**Features:**
+- Browser impersonation (Chrome, Firefox, Safari, Edge)
+- HTTP/2 and HTTP/3 support
+- Automatic header generation
+- Connection pooling with sessions
+
+### Browser Engine (Playwright)
+
+Used by `DynamicFetcher` and `StealthyFetcher` for JavaScript-heavy sites:
+
+```python
+# Located in: scrapling/engines/_browsers/
+from scrapling.fetchers import DynamicFetcher
+
+response = DynamicFetcher.fetch(
+    'https://example.com',
+    headless=True,
+    disable_resources=True,  # Block images, fonts, etc.
+    network_idle=True,       # Wait for network idle
+    load_dom=True           # Wait for DOM ready
+)
+```
+
+**Features:**
+- Real browser automation (Chromium-based)
+- JavaScript execution
+- Network interception and resource blocking
+- Page pooling for sessions
+- Stealth mode with anti-detection evasion
+
+## Data Flow
+
+### 1. Request Initialization
+
+```python
+# User makes a request
+response = Fetcher.fetch('https://example.com')
+```
+
+### 2. Configuration Merging
+
+The fetcher merges default settings with request-specific parameters:
+
+```python
+# From scrapling/engines/static.py
+class _ConfigurationLogic:
+    def _merge_request_args(self, **method_kwargs):
+        # Merges session defaults with request params
+        final_args = {
+            'headers': self._headers_job(...),
+            'timeout': self._get_param(kwargs, 'timeout', self._default_timeout),
+            'impersonate': _select_random_browser(impersonate),
+            # ... more args
+        }
+```
+
+### 3. Engine Execution
+
+The appropriate engine executes the request:
+
+```python
+# HTTP requests use curl_cffi
+session.request(method, **request_args)
+
+# Browser requests use Playwright
+page.goto(url, referer=referer)
+```
+
+### 4. Response Creation
+
+Raw responses are converted to unified `Response` objects:
+
+```python
+# From scrapling/engines/toolbelt/convertor.py
+class ResponseFactory:
+    @staticmethod
+    def from_http_request(response, selector_config, meta):
+        return Response(
+            url=str(response.url),
+            content=response.content,
+            status=response.status_code,
+            # ... more fields
+        )
+```
+
+### 5. Parsing Layer Access
+
+The `Response` inherits all `Selector` parsing methods:
+
+```python
+# User extracts data using Selector methods
+title = response.css('title::text').get()
+links = response.find_all('a', href=True)
+```
+
+## Design Principles
+
+### Lazy Imports
+
+Scrapling uses lazy imports for faster startup times:
+
+```python
+# From scrapling/__init__.py
+_LAZY_IMPORTS = {
+    "Fetcher": ("scrapling.fetchers", "Fetcher"),
+    "Selector": ("scrapling.parser", "Selector"),
+    # Only imported when accessed
+}
+
+def __getattr__(name: str):
+    if name in _LAZY_IMPORTS:
+        module_path, class_name = _LAZY_IMPORTS[name]
+        module = __import__(module_path, fromlist=[class_name])
+        return getattr(module, class_name)
+```
+
+### Unified Response Interface
+
+All fetchers return the same `Response` type, making it easy to switch between different fetching strategies:
+
+```python
+# All return Response objects
+response1 = Fetcher.fetch(url)          # HTTP client
+response2 = DynamicFetcher.fetch(url)   # Browser automation  
+response3 = StealthyFetcher.fetch(url)  # Stealth browser
+
+# Same API for all
+data = response1.css('.product::text').get()
+data = response2.css('.product::text').get()
+data = response3.css('.product::text').get()
+```
+
+### Separation of Concerns
+
+Each layer has a clear responsibility:
+
+- **Fetchers**: Network communication and browser control
+- **Engines**: Low-level HTTP/browser implementation
+- **Parser**: HTML/XML processing and navigation
+- **Sessions**: State management and connection pooling
+- **Toolbelt**: Shared utilities (proxy rotation, fingerprints, etc.)
+
+### Performance Optimizations
+
+**Cached Properties:**
+
+```python
+# From scrapling/parser.py
+class Selector:
+    @property
+    def tag(self) -> str:
+        if not self.__tag:
+            self.__tag = str(self._root.tag)
+        return self.__tag  # Computed once, cached
+```
+
+**Pre-compiled XPath:**
+
+```python
+# Pre-compiled for efficiency
+_find_all_elements = XPath(".//*")
+_find_all_elements_with_spaces = XPath(".//*[normalize-space(text())]")
+```
+
+**Element Conversion:**
+
+```python
+def __elements_convertor(self, elements):
+    # Store config once, reuse for all elements
+    url = self.url
+    encoding = self.encoding
+    adaptive = self.__adaptive_enabled
+    
+    return Selectors(
+        Selector(root=el, url=url, encoding=encoding, adaptive=adaptive)
+        for el in elements
+    )
+```
+
+## Extension Points
+
+Scrapling is designed to be extensible:
+
+### Custom Storage System
+
+Implement custom storage for adaptive element relocation:
+
+```python
+from scrapling.core.storage import StorageSystemMixin
+from functools import lru_cache
+
+@lru_cache(maxsize=128)
+class RedisStorage(StorageSystemMixin):
+    def save(self, element, identifier):
+        # Custom save logic
+        pass
+    
+    def retrieve(self, identifier):
+        # Custom retrieve logic
+        pass
+
+# Use custom storage
+selector = Selector(
+    html,
+    adaptive=True,
+    storage=RedisStorage,
+    storage_args={'host': 'localhost'}
+)
+```
+
+### Custom Fetcher
+
+Extend `BaseFetcher` for custom fetching logic:
+
+```python
+from scrapling.engines.toolbelt.custom import BaseFetcher
+
+class CustomFetcher(BaseFetcher):
+    @classmethod
+    def fetch(cls, url: str, **kwargs):
+        # Custom fetching logic
+        # Must return Response object
+        pass
+```
+
+## File Structure
+
+```
+scrapling/
+├── __init__.py              # Lazy imports, main exports
+├── parser.py                # Selector and Selectors classes
+├── fetchers/
+│   ├── __init__.py         # Fetcher exports
+│   ├── requests.py         # HTTP-based fetchers
+│   ├── chrome.py           # DynamicFetcher
+│   └── stealth_chrome.py   # StealthyFetcher
+├── engines/
+│   ├── __init__.py
+│   ├── static.py           # curl_cffi engine
+│   ├── constants.py        # Browser arguments
+│   ├── _browsers/          # Playwright engine
+│   │   ├── _base.py       # Session base classes
+│   │   ├── _controllers.py # DynamicSession
+│   │   ├── _stealth.py    # StealthySession
+│   │   └── _page.py       # Page pooling
+│   └── toolbelt/           # Shared utilities
+│       ├── custom.py      # Response, BaseFetcher
+│       ├── convertor.py   # ResponseFactory
+│       ├── fingerprints.py # Header generation
+│       └── proxy_rotation.py # ProxyRotator
+└── core/
+    ├── custom_types.py     # TextHandler, AttributesHandler
+    ├── storage.py          # Adaptive storage system
+    ├── translator.py       # CSS to XPath conversion
+    └── utils/              # Utilities
+```
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Fetchers" href="/concepts/fetchers">
+    Learn about different fetcher types
+  </Card>
+  <Card title="Parsing" href="/concepts/parsing">
+    Deep dive into the parsing system
+  </Card>
+  <Card title="Sessions" href="/concepts/sessions">
+    Understand session management
+  </Card>
+</CardGroup>

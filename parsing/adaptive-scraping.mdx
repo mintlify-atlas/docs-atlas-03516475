@@ -1,0 +1,649 @@
+---
+title: 'Adaptive Scraping'
+description: 'Build resilient scrapers that automatically adapt to website changes'
+---
+
+## Overview
+
+Adaptive parsing is Scrapling's innovative feature that makes your scrapers resilient to website structure changes. Instead of breaking when a website updates its HTML, Scrapling can automatically relocate elements based on their unique characteristics.
+
+<Info>
+  Adaptive scraping uses a similarity algorithm to match elements even when selectors change, making your scrapers more maintainable and reliable.
+</Info>
+
+## How It Works
+
+Adaptive parsing works by:
+
+1. **Saving** element signatures (tag, attributes, text, parent structure, siblings)
+2. **Storing** these signatures with an identifier
+3. **Relocating** elements when selectors fail by comparing stored signatures with current elements
+4. **Scoring** candidates based on similarity percentage
+5. **Returning** the best matches above a threshold
+
+## Enabling Adaptive Mode
+
+Enable adaptive parsing when creating a Selector:
+
+```python
+from scrapling import Fetcher
+
+# Fetch with adaptive mode enabled
+page = Fetcher.fetch('https://example.com', adaptive=True)
+
+# Or create Selector with adaptive mode
+from scrapling import Selector
+
+page = Selector(
+    html_content,
+    url='https://example.com',
+    adaptive=True
+)
+```
+
+<ParamField path="adaptive" type="bool" default="false">
+  Globally enable adaptive features for all selector methods
+</ParamField>
+
+<ParamField path="storage" type="StorageSystemMixin" default="SQLiteStorageSystem">
+  The storage class to use for saving element signatures. Must be wrapped with `lru_cache` decorator.
+</ParamField>
+
+<ParamField path="storage_args" type="Dict" default="{'storage_file': 'elements_storage.db', 'url': url}">
+  Arguments to pass to the storage class constructor
+</ParamField>
+
+<Warning>
+  The `adaptive` parameter must be set during initialization. It cannot be changed later and takes priority over all adaptive-related arguments in selector methods.
+</Warning>
+
+## Basic Usage
+
+### Auto-Save Mode
+
+Automatically save element signatures when first found:
+
+```python
+page = Fetcher.fetch('https://example.com', adaptive=True)
+
+# First run: finds element and saves it automatically
+product = page.css('.product-card', identifier='main-product', auto_save=True)
+
+# Future runs: if '.product-card' fails, uses saved signature to relocate
+product = page.css('.product-card', identifier='main-product', adaptive=True, auto_save=True)
+```
+
+### Manual Save and Retrieve
+
+Explicitly control when to save and retrieve:
+
+```python
+page = Fetcher.fetch('https://example.com', adaptive=True)
+
+# Find and save element
+product = page.css('.product-card').first
+if product:
+    page.save(product, identifier='main-product')
+
+# Later, on a changed page
+page_new = Fetcher.fetch('https://example.com', adaptive=True)
+
+# Try with adaptive mode
+product = page_new.css('.product-card', identifier='main-product', adaptive=True)
+
+# Or manually relocate
+element_data = page_new.retrieve('main-product')
+if element_data:
+    matches = page_new.relocate(element_data, percentage=70)
+```
+
+## Selector Methods with Adaptive Support
+
+Both `css()` and `xpath()` support adaptive parameters.
+
+### css() with Adaptive
+
+```python
+def css(
+    selector: str,
+    identifier: str = "",
+    adaptive: bool = False,
+    auto_save: bool = False,
+    percentage: int = 0,
+) -> Selectors
+```
+
+<ParamField path="identifier" type="str" default="">
+  Unique identifier for saving/retrieving element data. If not provided, the selector string is used.
+  
+  <Tip>Always use explicit identifiers when you plan to change selectors in the future</Tip>
+</ParamField>
+
+<ParamField path="adaptive" type="bool" default="false">
+  Enable adaptive relocation for this specific selector call
+</ParamField>
+
+<ParamField path="auto_save" type="bool" default="false">
+  Automatically save the first matched element with the identifier
+</ParamField>
+
+<ParamField path="percentage" type="int" default="0">
+  Minimum similarity percentage required when relocating (0-100). Higher values are more strict.
+</ParamField>
+
+### xpath() with Adaptive
+
+```python
+def xpath(
+    selector: str,
+    identifier: str = "",
+    adaptive: bool = False,
+    auto_save: bool = False,
+    percentage: int = 0,
+    **kwargs: Any,
+) -> Selectors
+```
+
+Accepts the same adaptive parameters as `css()`, plus:
+
+<ParamField path="**kwargs" type="Any">
+  Additional keyword arguments passed as XPath variables
+</ParamField>
+
+## Core Adaptive Methods
+
+### save()
+
+Save an element's signature to storage.
+
+```python
+def save(element: HtmlElement, identifier: str) -> None
+```
+
+<ParamField path="element" type="HtmlElement | Selector" required>
+  The element to save. Can be a Selector or raw HtmlElement.
+</ParamField>
+
+<ParamField path="identifier" type="str" required>
+  Unique identifier for retrieving the element later
+</ParamField>
+
+```python
+# Save element for later relocation
+product = page.css('.product').first
+if product:
+    page.save(product, 'main-product')
+    
+# Save with descriptive identifier
+price = page.css('.price').first
+if price:
+    page.save(price, 'product-price-v1')
+```
+
+### retrieve()
+
+Retrieve a saved element's signature from storage.
+
+```python
+def retrieve(identifier: str) -> Optional[Dict[str, Any]]
+```
+
+<ParamField path="identifier" type="str" required>
+  The identifier used when saving the element
+</ParamField>
+
+Returns a dictionary containing:
+- `tag`: Element tag name
+- `text`: Element text content
+- `attributes`: Element attributes
+- `path`: Element's path in the DOM tree
+- `parent_name`: Parent element's tag name
+- `parent_attribs`: Parent element's attributes
+- `parent_text`: Parent element's text
+- `siblings`: Information about sibling elements
+
+```python
+# Retrieve saved element data
+element_data = page.retrieve('main-product')
+
+if element_data:
+    print(f"Saved tag: {element_data['tag']}")
+    print(f"Saved attributes: {element_data['attributes']}")
+```
+
+### relocate()
+
+Find elements matching a saved signature.
+
+```python
+def relocate(
+    element: Union[Dict, HtmlElement, Selector],
+    percentage: int = 0,
+    selector_type: bool = False,
+) -> Union[List[HtmlElement], Selectors]
+```
+
+<ParamField path="element" type="Dict | HtmlElement | Selector" required>
+  The element signature to search for. Usually a dictionary from `retrieve()`.
+</ParamField>
+
+<ParamField path="percentage" type="int" default="0">
+  Minimum similarity percentage (0-100). Only elements scoring above this are returned.
+  
+  <Warning>The percentage calculation depends on page structure. Start with low values (0-30) and increase if needed.</Warning>
+</ParamField>
+
+<ParamField path="selector_type" type="bool" default="false">
+  If True, return results as Selectors object instead of raw HtmlElement list
+</ParamField>
+
+```python
+# Manual relocation workflow
+element_data = page.retrieve('main-product')
+
+if element_data:
+    # Get matches as raw elements
+    matches = page.relocate(element_data, percentage=70)
+    
+    # Or as Selectors
+    matches = page.relocate(element_data, percentage=70, selector_type=True)
+    
+    if matches:
+        print(f"Found {len(matches)} matches")
+        best_match = matches[0] if isinstance(matches, list) else matches.first
+```
+
+## Similarity Scoring
+
+Scrapling calculates similarity based on multiple factors:
+
+### Scoring Factors
+
+1. **Tag Name Match** (exact match)
+2. **Text Similarity** (using SequenceMatcher)
+3. **Attributes Similarity** (keys and values)
+4. **Class, ID, Href, Src** (separate scoring for important attributes)
+5. **Path Similarity** (DOM tree path)
+6. **Parent Structure** (parent tag, attributes, text)
+7. **Siblings Information** (surrounding elements)
+
+### How Similarity is Calculated
+
+```python
+# Internal scoring algorithm (simplified)
+score = 0
+checks = 0
+
+# Exact tag match
+score += 1 if same_tag else 0
+checks += 1
+
+# Text similarity
+if has_text:
+    score += SequenceMatcher(original_text, current_text).ratio()
+    checks += 1
+
+# Attribute similarity
+score += calculate_dict_similarity(original_attrs, current_attrs)
+checks += 1
+
+# Important attributes (class, id, href, src)
+for attr in ['class', 'id', 'href', 'src']:
+    if attr in original:
+        score += SequenceMatcher(original[attr], current[attr]).ratio()
+        checks += 1
+
+# Path similarity
+score += SequenceMatcher(original_path, current_path).ratio()
+checks += 1
+
+# Parent and siblings...
+
+final_score = (score / checks) * 100  # Convert to percentage
+```
+
+## Practical Examples
+
+### Example 1: Product Scraper
+
+```python
+from scrapling import Fetcher
+
+# Initial scraper development
+page = Fetcher.fetch('https://shop.example.com/product/123', adaptive=True)
+
+# Find and save key elements with auto_save
+product_name = page.css(
+    '.product-title',
+    identifier='product-name',
+    adaptive=True,
+    auto_save=True
+)
+
+price = page.css(
+    '.price-current',
+    identifier='product-price',
+    adaptive=True,
+    auto_save=True
+)
+
+description = page.css(
+    '.product-description',
+    identifier='product-desc',
+    adaptive=True,
+    auto_save=True
+)
+
+# Later, even if website changes CSS classes:
+# New page structure: .product-title → .prod-name
+page_new = Fetcher.fetch('https://shop.example.com/product/123', adaptive=True)
+
+# These will still work using adaptive relocation
+product_name = page_new.css(
+    '.product-title',  # Old selector
+    identifier='product-name',
+    adaptive=True,
+    auto_save=True  # Updates saved signature
+)
+
+if product_name:
+    print(product_name.first.text)
+```
+
+### Example 2: News Article Scraper
+
+```python
+class NewsScraper:
+    def __init__(self, url):
+        self.page = Fetcher.fetch(url, adaptive=True)
+    
+    def extract_article(self):
+        """Extract article with adaptive fallbacks"""
+        
+        # Try primary selector, save if found
+        title = self.page.css(
+            'h1.article-title',
+            identifier='article-title',
+            adaptive=True,
+            auto_save=True
+        )
+        
+        # Try primary selector with adaptive fallback
+        author = self.page.css(
+            '.author-name',
+            identifier='article-author',
+            adaptive=True,
+            auto_save=True
+        )
+        
+        # Content with higher threshold for accuracy
+        content = self.page.css(
+            '.article-content',
+            identifier='article-content',
+            adaptive=True,
+            auto_save=True,
+            percentage=50  # Require 50% similarity
+        )
+        
+        return {
+            'title': title.first.text if title else 'N/A',
+            'author': author.first.text if author else 'Unknown',
+            'content': content.first.get_all_text() if content else ''
+        }
+
+# Use the scraper
+scraper = NewsScraper('https://news.example.com/article/123')
+article = scraper.extract_article()
+```
+
+### Example 3: Monitoring Website Changes
+
+```python
+import logging
+from scrapling import Fetcher
+
+logging.basicConfig(level=logging.DEBUG)
+
+def monitor_element(url, identifier, current_selector):
+    """Monitor if element can still be found"""
+    page = Fetcher.fetch(url, adaptive=True)
+    
+    # Try to find element
+    result = page.css(
+        current_selector,
+        identifier=identifier,
+        adaptive=True,
+        auto_save=True,
+        percentage=30
+    )
+    
+    if result:
+        # Check if it was found via adaptive mode
+        element_data = page.retrieve(identifier)
+        if element_data:
+            # Compare original selector with what we found
+            original_attrs = element_data.get('attributes', {})
+            current_attrs = result.first.attrib
+            
+            if original_attrs == current_attrs:
+                print(f"✓ Element found with original selector")
+            else:
+                print(f"⚠ Element found via adaptive mode")
+                print(f"  Original: {original_attrs}")
+                print(f"  Current: {dict(current_attrs)}")
+                return 'CHANGED'
+    else:
+        print(f"✗ Element not found at all")
+        return 'NOT_FOUND'
+    
+    return 'OK'
+
+# Monitor key elements
+status = monitor_element(
+    'https://example.com',
+    'main-cta-button',
+    'button.cta-primary'
+)
+
+if status == 'CHANGED':
+    print("Website structure has changed, update selectors!")
+```
+
+### Example 4: Multi-Page Scraper with Adaptive
+
+```python
+from scrapling import Fetcher
+import time
+
+class ProductCatalogScraper:
+    def __init__(self, base_url):
+        self.base_url = base_url
+        self.setup_selectors()
+    
+    def setup_selectors(self):
+        """Initialize and save selectors from first page"""
+        page = Fetcher.fetch(self.base_url, adaptive=True)
+        
+        # Find and save product card structure
+        first_product = page.css('.product-item').first
+        if first_product:
+            page.save(first_product, 'product-card-template')
+            
+            # Save internal elements relative to product card
+            name = first_product.css('.product-name').first
+            if name:
+                page.save(name, 'product-name-in-card')
+            
+            price = first_product.css('.price').first
+            if price:
+                page.save(price, 'product-price-in-card')
+    
+    def scrape_page(self, page_num):
+        """Scrape a single page using adaptive selectors"""
+        url = f"{self.base_url}?page={page_num}"
+        page = Fetcher.fetch(url, adaptive=True)
+        
+        # Find products using adaptive mode
+        card_data = page.retrieve('product-card-template')
+        if card_data:
+            products = page.relocate(
+                card_data,
+                percentage=40,
+                selector_type=True
+            )
+            
+            results = []
+            for product in products:
+                # Extract data from each product
+                name_elem = product.css('.product-name', adaptive=True)
+                price_elem = product.css('.price', adaptive=True)
+                
+                results.append({
+                    'name': name_elem.first.text if name_elem else None,
+                    'price': price_elem.first.text if price_elem else None,
+                    'url': product.css('a').first['href'] if product.css('a') else None
+                })
+            
+            return results
+        return []
+    
+    def scrape_all(self, max_pages=10):
+        """Scrape all pages"""
+        all_products = []
+        
+        for page_num in range(1, max_pages + 1):
+            print(f"Scraping page {page_num}...")
+            products = self.scrape_page(page_num)
+            
+            if not products:
+                print(f"No products found on page {page_num}, stopping")
+                break
+            
+            all_products.extend(products)
+            time.sleep(1)  # Be nice to the server
+        
+        return all_products
+
+# Usage
+scraper = ProductCatalogScraper('https://shop.example.com/products')
+all_products = scraper.scrape_all(max_pages=5)
+print(f"Scraped {len(all_products)} products")
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Descriptive Identifiers" icon="tag">
+    Use clear, versioned identifiers like `'product-price-v1'` instead of relying on selectors as identifiers.
+  </Card>
+  
+  <Card title="Start with Auto-Save" icon="floppy-disk">
+    Use `auto_save=True` during development to automatically build your element database.
+  </Card>
+  
+  <Card title="Tune Percentage Carefully" icon="sliders">
+    Start with low percentage values (0-30) and increase only if you get too many false positives.
+  </Card>
+  
+  <Card title="Monitor Adaptive Usage" icon="chart-line">
+    Enable debug logging to see when adaptive mode is being used vs. direct selectors.
+  </Card>
+</CardGroup>
+
+## Custom Storage Backend
+
+You can implement custom storage backends by extending `StorageSystemMixin`:
+
+```python
+from functools import lru_cache
+from scrapling.core.storage import StorageSystemMixin
+
+@lru_cache(maxsize=128)
+class RedisStorage(StorageSystemMixin):
+    def __init__(self, redis_url, url, **kwargs):
+        super().__init__(url=url)
+        self.redis_client = connect_to_redis(redis_url)
+    
+    def save(self, element, identifier):
+        # Implement save to Redis
+        pass
+    
+    def retrieve(self, identifier):
+        # Implement retrieve from Redis
+        pass
+
+# Use custom storage
+page = Selector(
+    html,
+    adaptive=True,
+    storage=RedisStorage,
+    storage_args={'redis_url': 'redis://localhost:6379'}
+)
+```
+
+<Warning>
+  Custom storage classes must:
+  1. Be wrapped with `@lru_cache` decorator
+  2. Inherit from `StorageSystemMixin`
+  3. Accept `url` parameter
+</Warning>
+
+## Limitations
+
+<Info>
+  - Adaptive mode requires elements to have been saved before relocation
+  - Very similar elements on the same page may cause false positives
+  - Completely restructured pages may fall below similarity thresholds
+  - Text nodes cannot be saved (their parent element is saved instead)
+</Info>
+
+## Troubleshooting
+
+### Element Not Found Even with Adaptive
+
+```python
+# Enable debug logging to see similarity scores
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
+# Lower the percentage threshold
+result = page.css(
+    '.old-selector',
+    identifier='my-element',
+    adaptive=True,
+    percentage=0  # Accept any match
+)
+
+# Check what was saved
+element_data = page.retrieve('my-element')
+print("Saved signature:", element_data)
+```
+
+### Too Many False Positives
+
+```python
+# Increase the percentage threshold
+result = page.css(
+    '.selector',
+    identifier='my-element',
+    adaptive=True,
+    percentage=60  # Require 60% similarity
+)
+
+# Or use more specific identifiers
+result = page.css(
+    '.selector',
+    identifier='page-product-listing-price-2024-01',
+    adaptive=True
+)
+```
+
+### Updating Saved Elements
+
+```python
+# Re-save with updated structure
+new_element = page.css('.new-selector').first
+if new_element:
+    # Overwrites previous save
+    page.save(new_element, 'my-element')
+```

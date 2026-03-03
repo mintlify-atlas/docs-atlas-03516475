@@ -1,0 +1,385 @@
+---
+title: 'Fetcher Sessions'
+description: 'Session managers for persistent connections and browser contexts'
+---
+
+## FetcherSession
+
+A factory context manager that provides configured fetcher sessions for HTTP requests. Useful for maintaining persistent connections and reusing configurations across multiple requests.
+
+```python
+from scrapling import FetcherSession
+
+with FetcherSession(impersonate='chrome', timeout=60) as session:
+    response1 = session.get('https://example.com/page1')
+    response2 = session.get('https://example.com/page2')
+    # Session is automatically closed after the context
+```
+
+### Constructor
+
+```python
+FetcherSession(
+    impersonate='chrome',
+    http3=False,
+    stealthy_headers=True,
+    proxies=None,
+    proxy=None,
+    proxy_auth=None,
+    timeout=30,
+    headers=None,
+    retries=3,
+    retry_delay=1,
+    follow_redirects=True,
+    max_redirects=30,
+    verify=True,
+    cert=None,
+    selector_config=None,
+    proxy_rotator=None
+)
+```
+
+<ParamField path="impersonate" type="str | list" default="chrome">
+  Browser version to impersonate. Can be a single browser string or a list of browser strings for random selection
+</ParamField>
+
+<ParamField path="http3" type="bool" default="False">
+  Whether to use HTTP3. Might be problematic if used with `impersonate`
+</ParamField>
+
+<ParamField path="stealthy_headers" type="bool" default="True">
+  If enabled, creates and adds real browser headers. Also sets the referer header as if this request came from a Google search of URL's domain
+</ParamField>
+
+<ParamField path="proxies" type="dict">
+  Dict of proxies to use. Format: `{"http": proxy_url, "https": proxy_url}`
+</ParamField>
+
+<ParamField path="proxy" type="str">
+  Proxy URL to use. Format: `"http://username:password@localhost:8030"`. Cannot be used together with the `proxies` parameter
+</ParamField>
+
+<ParamField path="proxy_auth" type="tuple">
+  HTTP basic auth for proxy, tuple of (username, password)
+</ParamField>
+
+<ParamField path="timeout" type="int | float" default="30">
+  Number of seconds to wait before timing out
+</ParamField>
+
+<ParamField path="headers" type="dict">
+  Headers to include in the session with every request
+</ParamField>
+
+<ParamField path="retries" type="int" default="3">
+  Number of retry attempts
+</ParamField>
+
+<ParamField path="retry_delay" type="int" default="1">
+  Number of seconds to wait between retry attempts
+</ParamField>
+
+<ParamField path="follow_redirects" type="bool" default="True">
+  Whether to follow redirects
+</ParamField>
+
+<ParamField path="max_redirects" type="int" default="30">
+  Maximum number of redirects. Use -1 for unlimited
+</ParamField>
+
+<ParamField path="verify" type="bool" default="True">
+  Whether to verify HTTPS certificates
+</ParamField>
+
+<ParamField path="cert" type="str | tuple">
+  Tuple of (cert, key) filenames for the client certificate
+</ParamField>
+
+<ParamField path="selector_config" type="dict">
+  Arguments passed when creating the final Selector class
+</ParamField>
+
+<ParamField path="proxy_rotator" type="ProxyRotator">
+  A ProxyRotator instance for automatic proxy rotation
+</ParamField>
+
+### Methods
+
+When used as a context manager, `FetcherSession` yields a session object with the following methods:
+
+#### get()
+
+```python
+session.get(url: str, **kwargs) -> Response
+```
+
+Perform a GET request. Accepts all parameters from `Fetcher.get()`.
+
+#### post()
+
+```python
+session.post(url: str, **kwargs) -> Response
+```
+
+Perform a POST request. Accepts all parameters from `Fetcher.post()`.
+
+#### put()
+
+```python
+session.put(url: str, **kwargs) -> Response
+```
+
+Perform a PUT request. Accepts all parameters from `Fetcher.put()`.
+
+#### delete()
+
+```python
+session.delete(url: str, **kwargs) -> Response
+```
+
+Perform a DELETE request. Accepts all parameters from `Fetcher.delete()`.
+
+### Async Usage
+
+```python
+from scrapling import FetcherSession
+
+async with FetcherSession() as session:
+    response1 = await session.get('https://example.com/page1')
+    response2 = await session.get('https://example.com/page2')
+```
+
+---
+
+## StealthySession
+
+A stealthy browser session manager with page pooling. Maintains a persistent browser context for multiple requests.
+
+```python
+from scrapling import StealthySession
+
+with StealthySession(headless=True, solve_cloudflare=True) as session:
+    response1 = session.fetch('https://example.com/page1')
+    response2 = session.fetch('https://example.com/page2')
+    # Browser is automatically closed after the context
+```
+
+### Constructor
+
+Accepts all parameters from `StealthyFetcher.fetch()`. The session maintains these settings across all fetch calls.
+
+### Methods
+
+#### start()
+
+```python
+session.start() -> None
+```
+
+Manually start the browser session. Automatically called when using as a context manager.
+
+#### fetch()
+
+```python
+session.fetch(url: str, **kwargs) -> Response
+```
+
+Perform a fetch request within the session. Accepts all parameters from `StealthyFetcher.fetch()`, which can override session defaults.
+
+<ParamField path="proxy" type="str | dict">
+  Static proxy to override rotator and session proxy. A new browser context will be created and used with it
+</ParamField>
+
+All other parameters are the same as `StealthyFetcher.fetch()`.
+
+---
+
+## AsyncStealthySession
+
+Asynchronous version of `StealthySession`.
+
+```python
+import asyncio
+from scrapling import AsyncStealthySession
+
+async def main():
+    async with AsyncStealthySession(headless=True) as session:
+        response1 = await session.fetch('https://example.com/page1')
+        response2 = await session.fetch('https://example.com/page2')
+
+asyncio.run(main())
+```
+
+### Methods
+
+#### start()
+
+```python
+await session.start() -> None
+```
+
+Manually start the browser session asynchronously.
+
+#### fetch()
+
+```python
+await session.fetch(url: str, **kwargs) -> Response
+```
+
+Perform an asynchronous fetch request within the session.
+
+---
+
+## DynamicSession
+
+A browser session manager with page pooling using Playwright.
+
+```python
+from scrapling import DynamicSession
+
+with DynamicSession(headless=True) as session:
+    response1 = session.fetch('https://example.com/page1')
+    response2 = session.fetch('https://example.com/page2')
+```
+
+### Constructor
+
+Accepts all parameters from `DynamicFetcher.fetch()`. The session maintains these settings across all fetch calls.
+
+### Methods
+
+#### start()
+
+```python
+session.start() -> None
+```
+
+Manually start the browser session.
+
+#### fetch()
+
+```python
+session.fetch(url: str, **kwargs) -> Response
+```
+
+Perform a fetch request within the session. Accepts all parameters from `DynamicFetcher.fetch()`.
+
+---
+
+## AsyncDynamicSession
+
+Asynchronous version of `DynamicSession`.
+
+```python
+import asyncio
+from scrapling import AsyncDynamicSession
+
+async def main():
+    async with AsyncDynamicSession(headless=True) as session:
+        response1 = await session.fetch('https://example.com/page1')
+        response2 = await session.fetch('https://example.com/page2')
+
+asyncio.run(main())
+```
+
+### Constructor
+
+<ParamField path="max_pages" type="int">
+  The maximum number of tabs to be opened at the same time. Used in rotation through a PagePool
+</ParamField>
+
+Accepts all other parameters from `DynamicFetcher.fetch()`.
+
+### Methods
+
+#### start()
+
+```python
+await session.start() -> None
+```
+
+Manually start the browser session asynchronously.
+
+#### fetch()
+
+```python
+await session.fetch(url: str, **kwargs) -> Response
+```
+
+Perform an asynchronous fetch request within the session.
+
+---
+
+## Usage Examples
+
+### HTTP Session with Shared Config
+
+```python
+from scrapling import FetcherSession
+
+with FetcherSession(
+    headers={'User-Agent': 'MyBot/1.0'},
+    timeout=60,
+    retries=5
+) as session:
+    # All requests share the same headers and settings
+    response1 = session.get('https://api.example.com/users')
+    response2 = session.post('https://api.example.com/data', json={'key': 'value'})
+```
+
+### Browser Session with Cookies Persistence
+
+```python
+from scrapling import StealthySession
+
+with StealthySession() as session:
+    # Login
+    login_response = session.fetch(
+        'https://example.com/login',
+        page_action=lambda page: (
+            page.fill('#username', 'user'),
+            page.fill('#password', 'pass'),
+            page.click('#submit')
+        )
+    )
+    
+    # Cookies are maintained across requests
+    dashboard = session.fetch('https://example.com/dashboard')
+```
+
+### Async Session for Concurrent Requests
+
+```python
+import asyncio
+from scrapling import AsyncStealthySession
+
+async def scrape_multiple():
+    async with AsyncStealthySession(headless=True) as session:
+        # Fetch multiple pages concurrently with shared browser context
+        tasks = [
+            session.fetch(f'https://example.com/page{i}')
+            for i in range(1, 6)
+        ]
+        responses = await asyncio.gather(*tasks)
+        return responses
+
+results = asyncio.run(scrape_multiple())
+```
+
+### Session with Proxy Rotation
+
+```python
+from scrapling import FetcherSession, ProxyRotator
+
+rotator = ProxyRotator([
+    'http://proxy1.example.com:8080',
+    'http://proxy2.example.com:8080',
+    'http://proxy3.example.com:8080'
+])
+
+with FetcherSession(proxy_rotator=rotator) as session:
+    # Each request automatically uses a different proxy
+    response1 = session.get('https://example.com/page1')
+    response2 = session.get('https://example.com/page2')
+    response3 = session.get('https://example.com/page3')
+```

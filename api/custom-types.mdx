@@ -1,0 +1,553 @@
+---
+title: Custom Types
+description: Custom text handling types in Scrapling
+---
+
+Scrapling provides custom string and attribute handling types that extend Python's built-in types with additional functionality for web scraping workflows.
+
+## TextHandler
+
+Extended string type with scraping-specific methods.
+
+### Class Definition
+
+```python
+from scrapling.core.custom_types import TextHandler
+
+class TextHandler(str):
+    """Extends standard Python string by adding more functionality"""
+```
+
+### Additional Methods
+
+#### clean
+
+```python
+def clean(self, remove_entities: bool = False) -> TextHandler
+```
+
+Return a cleaned version of the string after removing whitespace and consecutive spaces.
+
+<ParamField path="remove_entities" type="bool" default="False">
+  If True, also replaces HTML entities with their characters.
+</ParamField>
+
+**Example:**
+```python
+text = TextHandler("  Hello\n\t  World  ")
+print(text.clean())  # "Hello World"
+
+html_text = TextHandler("Price: &pound;10")
+print(html_text.clean(remove_entities=True))  # "Price: £10"
+```
+
+#### re
+
+```python
+def re(
+    self,
+    regex: str | Pattern,
+    replace_entities: bool = True,
+    clean_match: bool = False,
+    case_sensitive: bool = True,
+    check_match: bool = False
+) -> TextHandlers | bool
+```
+
+Apply regex to the text and return matches.
+
+<ParamField path="regex" type="str | Pattern" required>
+  Regular expression pattern (string or compiled).
+</ParamField>
+
+<ParamField path="replace_entities" type="bool" default="True">
+  Replace HTML entities in matches.
+</ParamField>
+
+<ParamField path="clean_match" type="bool" default="False">
+  Clean whitespace before matching.
+</ParamField>
+
+<ParamField path="case_sensitive" type="bool" default="True">
+  Whether to match case-sensitively.
+</ParamField>
+
+<ParamField path="check_match" type="bool" default="False">
+  If True, return bool indicating if pattern matches (no results extraction).
+</ParamField>
+
+**Returns:** `TextHandlers` list of matches, or `bool` if `check_match=True`
+
+**Example:**
+```python
+text = TextHandler("Email: user@example.com, Admin: admin@example.com")
+
+# Extract all emails
+emails = text.re(r'\b[\w.-]+@[\w.-]+\.\w+\b')
+print(emails)  # TextHandlers(['user@example.com', 'admin@example.com'])
+
+# Check if pattern matches
+has_email = text.re(r'\b[\w.-]+@[\w.-]+\.\w+\b', check_match=True)
+print(has_email)  # True
+
+# Case-insensitive matching
+text = TextHandler("Hello World")
+result = text.re(r'hello', case_sensitive=False)
+print(result)  # TextHandlers(['Hello'])
+```
+
+#### re_first
+
+```python
+def re_first(
+    self,
+    regex: str | Pattern,
+    default: Any = None,
+    replace_entities: bool = True,
+    clean_match: bool = False,
+    case_sensitive: bool = True
+) -> TextHandler
+```
+
+Apply regex and return the first match, or default if no match.
+
+<ParamField path="regex" type="str | Pattern" required>
+  Regular expression pattern.
+</ParamField>
+
+<ParamField path="default" type="Any" default="None">
+  Value to return if no match is found.
+</ParamField>
+
+<ParamField path="replace_entities" type="bool" default="True">
+  Replace HTML entities in the match.
+</ParamField>
+
+<ParamField path="clean_match" type="bool" default="False">
+  Clean whitespace before matching.
+</ParamField>
+
+<ParamField path="case_sensitive" type="bool" default="True">
+  Whether to match case-sensitively.
+</ParamField>
+
+**Example:**
+```python
+text = TextHandler("Price: $49.99")
+price = text.re_first(r'\$(\d+\.\d+)', default="0.00")
+print(price)  # "49.99"
+
+no_match = text.re_first(r'€(\d+)', default="Not found")
+print(no_match)  # "Not found"
+```
+
+#### json
+
+```python
+def json(self) -> Dict
+```
+
+Parse the text as JSON.
+
+**Returns:** Parsed JSON as dictionary
+
+**Raises:** JSON parsing error if invalid
+
+**Example:**
+```python
+json_text = TextHandler('{"name": "John", "age": 30}')
+data = json_text.json()
+print(data)  # {'name': 'John', 'age': 30}
+```
+
+#### sort
+
+```python
+def sort(self, reverse: bool = False) -> TextHandler
+```
+
+Return a sorted version of the string.
+
+<ParamField path="reverse" type="bool" default="False">
+  Sort in descending order.
+</ParamField>
+
+**Example:**
+```python
+text = TextHandler("dcba")
+print(text.sort())  # "abcd"
+print(text.sort(reverse=True))  # "dcba"
+```
+
+### Scrapy/Parsel Compatibility
+
+For easy migration from Scrapy/Parsel:
+
+```python
+# These methods are aliases for compatibility
+text.get()         # Returns self
+text.get_all()     # Returns self
+text.extract()     # Alias for get_all()
+text.extract_first()  # Alias for get()
+```
+
+## TextHandlers
+
+List of `TextHandler` objects with collective operations.
+
+### Class Definition
+
+```python
+from scrapling.core.custom_types import TextHandlers
+
+class TextHandlers(List[TextHandler]):
+    """Subclass of list with additional methods for TextHandler items."""
+```
+
+### Methods
+
+#### re
+
+```python
+def re(
+    self,
+    regex: str | Pattern,
+    replace_entities: bool = True,
+    clean_match: bool = False,
+    case_sensitive: bool = True
+) -> TextHandlers
+```
+
+Apply regex to each element and return flattened results.
+
+**Example:**
+```python
+texts = TextHandlers([
+    TextHandler("Email: user@example.com"),
+    TextHandler("Contact: admin@example.com")
+])
+
+emails = texts.re(r'\b[\w.-]+@[\w.-]+\.\w+\b')
+print(emails)  # TextHandlers(['user@example.com', 'admin@example.com'])
+```
+
+#### re_first
+
+```python
+def re_first(
+    self,
+    regex: str | Pattern,
+    default: Any = None,
+    replace_entities: bool = True,
+    clean_match: bool = False,
+    case_sensitive: bool = True
+) -> TextHandler
+```
+
+Apply regex to each element and return the first match overall.
+
+**Example:**
+```python
+texts = TextHandlers([
+    TextHandler("No number here"),
+    TextHandler("Price: $25.99"),
+    TextHandler("Sale: $19.99")
+])
+
+first_price = texts.re_first(r'\$(\d+\.\d+)')
+print(first_price)  # "25.99"
+```
+
+#### get
+
+```python
+def get(self, default=None) -> TextHandler | None
+```
+
+Return the first element, or default if empty.
+
+**Example:**
+```python
+texts = TextHandlers([TextHandler("First"), TextHandler("Second")])
+print(texts.get())  # "First"
+
+empty = TextHandlers([])
+print(empty.get("default"))  # "default"
+```
+
+### Scrapy/Parsel Compatibility
+
+```python
+texts.extract()        # Returns self
+texts.extract_first()  # Alias for get()
+texts.get_all()        # Alias for extract()
+```
+
+## AttributesHandler
+
+Read-only mapping for HTML element attributes with additional functionality.
+
+### Class Definition
+
+```python
+from scrapling.core.custom_types import AttributesHandler
+
+class AttributesHandler(Mapping[str, TextHandler]):
+    """Read-only mapping with additional attribute handling methods."""
+```
+
+### Constructor
+
+```python
+def __init__(self, mapping: Any = None, **kwargs: Any) -> None
+```
+
+**Example:**
+```python
+attrs = AttributesHandler({
+    "class": "btn btn-primary",
+    "id": "submit-button",
+    "data-action": "submit"
+})
+
+# Or with kwargs
+attrs = AttributesHandler(class_="btn", id="submit-button")
+```
+
+### Methods
+
+#### get
+
+```python
+def get(self, key: str, default: Any = None) -> TextHandler
+```
+
+Get an attribute value by key.
+
+**Example:**
+```python
+attrs = AttributesHandler({"class": "container", "id": "main"})
+
+print(attrs.get("class"))  # TextHandler("container")
+print(attrs.get("missing", "default"))  # "default"
+print(attrs["id"])  # TextHandler("main")
+```
+
+#### search_values
+
+```python
+def search_values(
+    self,
+    keyword: str,
+    partial: bool = False
+) -> Generator[AttributesHandler, None, None]
+```
+
+Search attributes by value.
+
+<ParamField path="keyword" type="str" required>
+  Keyword to search for in values.
+</ParamField>
+
+<ParamField path="partial" type="bool" default="False">
+  If True, use substring matching. If False, require exact match.
+</ParamField>
+
+**Yields:** `AttributesHandler` for each matching key-value pair
+
+**Example:**
+```python
+attrs = AttributesHandler({
+    "class": "btn btn-primary",
+    "id": "primary-button",
+    "data-type": "secondary"
+})
+
+# Exact match
+for match in attrs.search_values("btn btn-primary"):
+    print(dict(match))  # {'class': 'btn btn-primary'}
+
+# Partial match
+for match in attrs.search_values("primary", partial=True):
+    print(dict(match))
+    # {'class': 'btn btn-primary'}
+    # {'id': 'primary-button'}
+```
+
+#### json_string
+
+```python
+@property
+def json_string(self) -> bytes
+```
+
+Convert attributes to JSON bytes.
+
+**Example:**
+```python
+attrs = AttributesHandler({"class": "container", "id": "main"})
+json_bytes = attrs.json_string
+print(json_bytes)  # b'{"class":"container","id":"main"}'
+```
+
+### Usage with Responses
+
+```python
+# In spider callbacks
+async def parse(self, response):
+    element = response.css("button").get()
+    
+    # Access attributes
+    attrs = element.attrib
+    
+    # Get specific attribute
+    button_class = attrs.get("class")
+    
+    # Search for attributes with specific values
+    for match in attrs.search_values("submit", partial=True):
+        print(f"Found: {dict(match)}")
+    
+    # Convert to dict if needed
+    attrs_dict = dict(attrs)
+```
+
+## Complete Examples
+
+### Text Cleaning and Extraction
+
+```python
+from scrapling.core.custom_types import TextHandler
+
+html_text = TextHandler("""
+    Price: &pound;49.99
+    
+    Contact: support@example.com
+    
+    Available: YES
+""")
+
+# Clean whitespace
+cleaned = html_text.clean(remove_entities=True)
+print(cleaned)  # "Price: £49.99 Contact: support@example.com Available: YES"
+
+# Extract email
+email = cleaned.re_first(r'\b[\w.-]+@[\w.-]+\.\w+\b')
+print(email)  # "support@example.com"
+
+# Extract price
+price = cleaned.re_first(r'£([\d.]+)')
+print(price)  # "49.99"
+
+# Check for availability
+available = cleaned.re(r'Available:\s*(YES|NO)', check_match=True)
+print(available)  # True
+```
+
+### Working with Lists
+
+```python
+from scrapling.core.custom_types import TextHandlers, TextHandler
+
+products = TextHandlers([
+    TextHandler("Product A - $29.99"),
+    TextHandler("Product B - $39.99"),
+    TextHandler("Product C - $49.99")
+])
+
+# Extract all prices
+prices = products.re(r'\$(\d+\.\d+)')
+print(prices)  # TextHandlers(['29.99', '39.99', '49.99'])
+
+# Get first product name
+first_product = products.re_first(r'Product ([A-Z])')
+print(first_product)  # "A"
+
+# Get first element
+first = products.get()
+print(first)  # "Product A - $29.99"
+```
+
+### Attribute Handling
+
+```python
+from scrapling.core.custom_types import AttributesHandler
+
+# Parse element attributes
+attrs = AttributesHandler({
+    "class": "product-card featured",
+    "data-id": "12345",
+    "data-price": "29.99",
+    "data-category": "electronics"
+})
+
+# Access attributes
+product_id = attrs.get("data-id")
+print(product_id)  # TextHandler("12345")
+
+# Search by value
+for match in attrs.search_values("electronics"):
+    print(dict(match))  # {'data-category': 'electronics'}
+
+# Search with partial match
+for match in attrs.search_values("product", partial=True):
+    print(dict(match))  # {'class': 'product-card featured'}
+
+# Convert to JSON
+import json
+attrs_json = attrs.json_string
+data = json.loads(attrs_json)
+print(data["data-price"])  # "29.99"
+```
+
+### Spider Integration
+
+```python
+from scrapling.spiders import Spider
+
+class ProductSpider(Spider):
+    name = "products"
+    start_urls = ["https://store.example.com"]
+    
+    async def parse(self, response):
+        for product in response.css(".product"):
+            # Text is automatically TextHandler
+            title = product.css(".title::text").get()
+            clean_title = title.clean()
+            
+            # Extract price using regex
+            price_text = product.css(".price::text").get()
+            price = price_text.re_first(r'\$(\d+\.\d+)', default="0.00")
+            
+            # Work with attributes
+            attrs = product.attrib
+            product_id = attrs.get("data-id")
+            
+            yield {
+                "title": clean_title,
+                "price": float(price),
+                "id": product_id
+            }
+```
+
+## Type Hints
+
+For type checking in your code:
+
+```python
+from scrapling.core.custom_types import TextHandler, TextHandlers, AttributesHandler
+from typing import Dict
+
+def process_text(text: TextHandler) -> str:
+    return text.clean()
+
+def process_list(texts: TextHandlers) -> TextHandler:
+    return texts.get("default")
+
+def process_attrs(attrs: AttributesHandler) -> Dict[str, str]:
+    return dict(attrs)
+```
+
+## See Also
+
+- [Response](https://scrapling.com/reference/adaptor) - Response objects return these types
+- [Spider](/api/spider) - Using custom types in spider callbacks

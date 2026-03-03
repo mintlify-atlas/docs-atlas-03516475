@@ -1,80 +1,440 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick Start
+description: Get up and running with Scrapling in minutes
 ---
 
-## Get started in three steps
+## Prerequisites
 
-Get your documentation site running locally and make your first customization.
+Make sure you have Scrapling installed. If not, see the [Installation guide](/installation).
 
-### Step 1: Set up your local environment
+For the examples below, you'll need:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+```bash
+pip install "scrapling[fetchers]"
+scrapling install
+```
+
+## Your First Scrape
+
+Let's scrape a simple website using HTTP requests:
+
+<Steps>
+  <Step title="Import the Fetcher">
+    ```python
+    from scrapling.fetchers import Fetcher
+    ```
+  </Step>
+
+  <Step title="Fetch the page">
+    ```python
+    page = Fetcher.get('https://quotes.toscrape.com/')
+    ```
+  </Step>
+
+  <Step title="Extract data with CSS selectors">
+    ```python
+    # Get all quotes
+    quotes = page.css('.quote .text::text').getall()
+    print(quotes)
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    # Get all authors
+    authors = page.css('.quote .author::text').getall()
+    print(authors)
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+  The `::text` pseudo-element extracts text content, similar to Scrapy/Parsel syntax.
+</Tip>
+
+## Using Sessions
+
+For multiple requests to the same domain, use sessions to maintain cookies and state:
+
+```python
+from scrapling.fetchers import FetcherSession
+
+with FetcherSession(impersonate='chrome') as session:
+    # First request
+    page1 = session.get('https://quotes.toscrape.com/')
+    quotes = page1.css('.quote .text::text').getall()
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    # Follow pagination - cookies maintained
+    page2 = session.get('https://quotes.toscrape.com/page/2/')
+    more_quotes = page2.css('.quote .text::text').getall()
+```
 
-### Step 2: Deploy your changes
+## Stealthy Scraping
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+For websites with anti-bot protection, use the StealthyFetcher:
+
+<Steps>
+  <Step title="Import StealthyFetcher">
+    ```python
+    from scrapling.fetchers import StealthyFetcher
+    ```
+  </Step>
+
+  <Step title="Fetch protected pages">
+    ```python
+    # Bypass Cloudflare automatically
+    page = StealthyFetcher.fetch(
+        'https://nopecha.com/demo/cloudflare',
+        solve_cloudflare=True,
+        headless=True
+    )
+    ```
+  </Step>
+
+  <Step title="Extract data">
+    ```python
+    data = page.css('#padded_content a').getall()
+    print(page.status)  # 200
+    ```
+  </Step>
+</Steps>
+
+<CodeGroup>
+
+```python Synchronous
+from scrapling.fetchers import StealthyFetcher
+
+page = StealthyFetcher.fetch(
+    'https://www.browserscan.net/bot-detection',
+    headless=True,
+    network_idle=True
+)
+print(f"Status: {page.status}")  # 200
+```
+
+```python Asynchronous
+from scrapling.fetchers import StealthyFetcher
+
+page = await StealthyFetcher.async_fetch(
+    'https://www.browserscan.net/bot-detection',
+    headless=True,
+    network_idle=True
+)
+print(f"Status: {page.status}")  # 200
+```
+
+</CodeGroup>
+
+## Building a Spider
+
+For larger scraping projects, use Scrapling's spider framework:
+
+<Steps>
+  <Step title="Create a spider class">
+    ```python
+    from scrapling.spiders import Spider, Response
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    class QuotesSpider(Spider):
+        name = "quotes"
+        start_urls = ["https://quotes.toscrape.com/"]
+        concurrent_requests = 10
+    ```
+  </Step>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+  <Step title="Define the parse method">
+    ```python
+        async def parse(self, response: Response):
+            # Extract quotes from current page
+            for quote in response.css('.quote'):
+                yield {
+                    "text": quote.css('.text::text').get(),
+                    "author": quote.css('.author::text').get(),
+                    "tags": quote.css('.tag::text').getall(),
+                }
+            
+            # Follow pagination
+            next_page = response.css('.next a::attr(href)').get()
+            if next_page:
+                yield response.follow(next_page)
+    ```
+  </Step>
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+  <Step title="Run the spider">
+    ```python
+    # Run and get results
+    result = QuotesSpider().start()
+    
+    print(f"Scraped {len(result.items)} quotes")
+    
+    # Export to JSON
+    result.items.to_json("quotes.json")
+    
+    # Or JSONL
+    result.items.to_jsonl("quotes.jsonl")
+    ```
+  </Step>
+</Steps>
 
-### Step 3: Go live
+### Complete Spider Example
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+```python
+from scrapling.spiders import Spider, Response
 
-## Next steps
+class QuotesSpider(Spider):
+    name = "quotes"
+    start_urls = ["https://quotes.toscrape.com/"]
+    concurrent_requests = 10
+    
+    async def parse(self, response: Response):
+        for quote in response.css('.quote'):
+            yield {
+                "text": quote.css('.text::text').get(),
+                "author": quote.css('.author::text').get(),
+                "tags": quote.css('.tag::text').getall(),
+            }
+        
+        next_page = response.css('.next a::attr(href)').get()
+        if next_page:
+            yield response.follow(next_page)
 
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+# Run the spider
+result = QuotesSpider().start()
+print(f"Scraped {len(result.items)} quotes")
+result.items.to_json("quotes.json")
+```
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  Spiders support pause/resume, multiple session types, proxy rotation, and streaming mode. See [Spider Documentation](/spiders/getting-started) for advanced features.
 </Note>
+
+## Multi-Session Spider
+
+Use different session types in a single spider for optimal performance:
+
+```python
+from scrapling.spiders import Spider, Request, Response
+from scrapling.fetchers import FetcherSession, AsyncStealthySession
+
+class MultiSessionSpider(Spider):
+    name = "multi"
+    start_urls = ["https://example.com/"]
+    
+    def configure_sessions(self, manager):
+        # Fast HTTP session for most pages
+        manager.add("fast", FetcherSession(impersonate="chrome"))
+        # Stealth session for protected pages
+        manager.add("stealth", AsyncStealthySession(headless=True), lazy=True)
+    
+    async def parse(self, response: Response):
+        for link in response.css('a::attr(href)').getall():
+            # Route protected pages through stealth session
+            if "protected" in link:
+                yield Request(link, sid="stealth", callback=self.parse_protected)
+            else:
+                yield Request(link, sid="fast")
+    
+    async def parse_protected(self, response: Response):
+        # Handle protected pages
+        data = response.css('.content::text').get()
+        yield {"protected_data": data}
+
+MultiSessionSpider().start()
+```
+
+## Adaptive Scraping
+
+Scrapling can automatically relocate elements when website structure changes:
+
+<Steps>
+  <Step title="Enable adaptive mode">
+    ```python
+    from scrapling.fetchers import StealthyFetcher
+    
+    StealthyFetcher.adaptive = True
+    ```
+  </Step>
+
+  <Step title="Save element locations">
+    ```python
+    page = StealthyFetcher.fetch('https://example.com', headless=True)
+    
+    # Save element signatures for future use
+    products = page.css('.product', auto_save=True)
+    ```
+  </Step>
+
+  <Step title="Relocate after changes">
+    ```python
+    # Later, if website structure changes
+    page = StealthyFetcher.fetch('https://example.com', headless=True)
+    
+    # Automatically find elements using saved signatures
+    products = page.css('.product', adaptive=True)
+    ```
+  </Step>
+</Steps>
+
+## Navigation & Selection
+
+Scrapling offers powerful element navigation:
+
+```python
+from scrapling.fetchers import Fetcher
+
+page = Fetcher.get('https://quotes.toscrape.com/')
+
+# Multiple selection methods
+quotes = page.css('.quote')                              # CSS selector
+quotes = page.xpath('//div[@class="quote"]')           # XPath
+quotes = page.find_all('div', class_='quote')           # BeautifulSoup-style
+quotes = page.find_by_text('quote', tag='div')          # Text search
+
+# Element navigation
+first_quote = quotes[0]
+author = first_quote.css('.author::text').get()
+parent = first_quote.parent
+children = first_quote.children
+siblings = first_quote.siblings
+
+# Find similar elements
+similar = first_quote.find_similar()
+```
+
+<Tip>
+  See [Selection Methods](/parsing/selectors) for comprehensive selector documentation.
+</Tip>
+
+## Command Line Usage
+
+Scrape without writing code:
+
+<CodeGroup>
+
+```bash Interactive Shell
+scrapling shell
+```
+
+```bash Extract to Markdown
+scrapling extract get 'https://example.com' content.md
+```
+
+```bash Extract with CSS Selector
+scrapling extract get 'https://example.com' content.txt \
+  --css-selector '#main-content' \
+  --impersonate 'chrome'
+```
+
+```bash Stealthy Extract
+scrapling extract stealthy-fetch 'https://nopecha.com/demo/cloudflare' \
+  captchas.html \
+  --css-selector '#padded_content a' \
+  --solve-cloudflare
+```
+
+</CodeGroup>
+
+<Note>
+  - `.txt` extension extracts text content
+  - `.md` extension extracts Markdown representation
+  - `.html` extension extracts raw HTML
+</Note>
+
+## Next Steps
+
+You're now ready to explore Scrapling's advanced features:
+
+<CardGroup cols={2}>
+  <Card title="Selection Methods" icon="crosshairs" href="/parsing/selectors">
+    Master CSS, XPath, regex, and text search
+  </Card>
+  
+  <Card title="Choose Your Fetcher" icon="compass" href="/fetching/choosing-fetcher">
+    Learn when to use each fetcher type
+  </Card>
+  
+  <Card title="Build Advanced Spiders" icon="spider" href="/spiders/getting-started">
+    Concurrent crawls with pause/resume
+  </Card>
+  
+  <Card title="Proxy Rotation" icon="rotate" href="/fetching/proxy-rotation">
+    Built-in proxy rotation strategies
+  </Card>
+  
+  <Card title="Interactive Shell" icon="terminal" href="/cli/interactive-shell">
+    Speed up development with IPython
+  </Card>
+  
+  <Card title="MCP Server" icon="robot" href="/ai/mcp-server">
+    AI-assisted web scraping
+  </Card>
+</CardGroup>
+
+## Common Patterns
+
+<AccordionGroup>
+  <Accordion title="Handling Pagination">
+    ```python
+    from scrapling.fetchers import Fetcher
+    
+    page = Fetcher.get('https://quotes.toscrape.com/')
+    
+    while True:
+        # Extract data from current page
+        quotes = page.css('.quote .text::text').getall()
+        print(quotes)
+        
+        # Check for next page
+        next_link = page.css('.next a::attr(href)').get()
+        if not next_link:
+            break
+        
+        # Fetch next page
+        page = Fetcher.get(f'https://quotes.toscrape.com{next_link}')
+    ```
+  </Accordion>
+
+  <Accordion title="Extracting Attributes">
+    ```python
+    # Get href attributes
+    links = page.css('a::attr(href)').getall()
+    
+    # Get data attributes
+    product_ids = page.css('.product::attr(data-id)').getall()
+    
+    # Get multiple attributes
+    for link in page.css('a'):
+        url = link.attrib.get('href')
+        title = link.attrib.get('title')
+    ```
+  </Accordion>
+
+  <Accordion title="JSON Data Extraction">
+    ```python
+    # Extract JSON from script tags
+    json_data = page.css('script#data::text').get()
+    
+    # Parse JSON attributes
+    schema = page.css('[schema]').attrib['schema'].json()
+    
+    # Extract all text as JSON-ready
+    data = {
+        "title": page.css('h1::text').get(),
+        "price": page.css('.price::text').get(),
+        "description": page.css('.description::text').get(),
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Error Handling">
+    ```python
+    from scrapling.fetchers import Fetcher
+    
+    try:
+        page = Fetcher.get('https://example.com', timeout=10)
+        
+        if page.status != 200:
+            print(f"Error: Status {page.status}")
+        else:
+            data = page.css('.content::text').get()
+            
+    except Exception as e:
+        print(f"Failed to fetch: {e}")
+    ```
+  </Accordion>
+</AccordionGroup>

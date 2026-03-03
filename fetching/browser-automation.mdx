@@ -1,0 +1,461 @@
+---
+title: Browser Automation (DynamicFetcher)
+description: Full browser automation with Playwright for JavaScript-heavy websites
+---
+
+`DynamicFetcher` provides full browser automation capabilities using Playwright. It's ideal for scraping JavaScript-heavy single-page applications (SPAs) and sites requiring complex user interactions.
+
+## Basic Usage
+
+### One-Off Requests
+
+```python
+from scrapling.fetchers import DynamicFetcher
+
+# Simple fetch
+page = DynamicFetcher.fetch(
+    'https://quotes.toscrape.com/',
+    headless=True
+)
+quotes = page.css('.quote .text::text').getall()
+
+# Wait for network idle
+page = DynamicFetcher.fetch(
+    'https://spa-site.com',
+    headless=True,
+    network_idle=True,
+    load_dom=True
+)
+```
+
+### With DynamicSession
+
+For multiple requests, use `DynamicSession` to keep the browser open:
+
+```python
+from scrapling.fetchers import DynamicSession
+
+with DynamicSession(
+    headless=True,
+    network_idle=True,
+    disable_resources=False
+) as session:
+    # First request
+    page1 = session.fetch('https://example.com/page1')
+    
+    # Second request (browser stays open)
+    page2 = session.fetch('https://example.com/page2')
+    
+    # XPath selector
+    data = page2.xpath('//span[@class="text"]/text()').getall()
+```
+
+## Key Features
+
+### JavaScript Execution
+
+```python
+page = DynamicFetcher.fetch(
+    'https://spa-site.com',
+    headless=True,
+    load_dom=True  # Wait for JavaScript to execute
+)
+```
+
+### Network Idle
+
+Wait for all network requests to complete:
+
+```python
+page = DynamicFetcher.fetch(
+    'https://example.com',
+    headless=True,
+    network_idle=True  # Wait until no network connections for 500ms
+)
+```
+
+### Custom Page Actions
+
+Execute custom automation before returning the response:
+
+```python
+def interact(page):
+    # Click a button
+    page.click('button.load-more')
+    
+    # Fill a form
+    page.fill('input[name="search"]', 'query')
+    page.press('input[name="search"]', 'Enter')
+    
+    # Wait for element
+    page.wait_for_selector('.results')
+    
+    # Scroll page
+    page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+
+page = DynamicFetcher.fetch(
+    'https://example.com',
+    headless=True,
+    page_action=interact
+)
+```
+
+## Request Parameters
+
+### DynamicFetcher.fetch()
+
+```python
+DynamicFetcher.fetch(
+    url='https://example.com',
+    
+    # Browser configuration
+    headless=True,                    # Run in headless mode
+    real_chrome=False,                # Use installed Chrome instead of Chromium
+    
+    # Timing and waits
+    timeout=30000,                    # Operation timeout (ms)
+    wait=0,                           # Extra wait after load (ms)
+    network_idle=False,               # Wait for network idle
+    load_dom=True,                    # Wait for DOM load
+    
+    # Selectors and actions
+    wait_selector='#content',         # Wait for selector
+    wait_selector_state='attached',   # Selector state: attached/visible/hidden
+    page_action=lambda page: page.click('#button'),  # Custom actions
+    
+    # Headers and referer
+    google_search=True,               # Add Google search referer
+    extra_headers={'Custom': 'value'},# Additional headers
+    useragent='Mozilla/5.0...',       # Custom user agent
+    
+    # Resources and performance
+    disable_resources=False,          # Block images, fonts, etc.
+    blocked_domains={'ads.com'},      # Block specific domains
+    
+    # Session and state
+    cookies=[{'name': 'session', 'value': 'xyz', 'domain': 'example.com'}],
+    init_script='/path/to/script.js', # JavaScript to run on page creation
+    
+    # Locale
+    locale='en-US',                   # Browser locale
+    
+    # Advanced
+    proxy='http://proxy:8080',        # Proxy configuration
+    cdp_url='http://localhost:9222',  # Connect to existing browser
+    extra_flags=['--flag=value'],     # Additional Chrome flags
+)
+```
+
+## Advanced Features
+
+### Wait for Selectors
+
+Wait for specific elements before returning:
+
+```python
+page = DynamicFetcher.fetch(
+    'https://example.com',
+    headless=True,
+    wait_selector='.dynamic-content',
+    wait_selector_state='visible',  # Options: attached, visible, hidden
+    timeout=60000
+)
+```
+
+**Selector states:**
+- `attached`: Element exists in DOM
+- `visible`: Element is visible on page
+- `hidden`: Element exists but is hidden
+
+### Resource Blocking
+
+Block unnecessary resources for faster loading:
+
+```python
+page = DynamicFetcher.fetch(
+    'https://example.com',
+    headless=True,
+    disable_resources=True,  # Block fonts, images, media, stylesheets
+    blocked_domains={'analytics.google.com', 'facebook.com'}
+)
+```
+
+Blocked resource types when `disable_resources=True`:
+- `font`, `image`, `media`
+- `beacon`, `object`, `imageset`
+- `texttrack`, `websocket`
+- `csp_report`, `stylesheet`
+
+### Initialization Scripts
+
+Run JavaScript on every page creation:
+
+```python
+# Create init.js
+with open('init.js', 'w') as f:
+    f.write('''
+    // Override navigator.webdriver
+    Object.defineProperty(navigator, 'webdriver', {get: () => false});
+    
+    // Add custom properties
+    window.customProp = 'value';
+    ''')
+
+page = DynamicFetcher.fetch(
+    'https://example.com',
+    headless=True,
+    init_script='/path/to/init.js'
+)
+```
+
+### Real Chrome vs Chromium
+
+Use your installed Chrome browser:
+
+```python
+page = DynamicFetcher.fetch(
+    'https://example.com',
+    headless=True,
+    real_chrome=True  # Use system Chrome
+)
+```
+
+<Warning>
+Requires Chrome to be installed on your system.
+</Warning>
+
+### CDP Connection
+
+Connect to an existing browser instance:
+
+```bash
+# Start Chrome with remote debugging:
+google-chrome --remote-debugging-port=9222
+```
+
+```python
+page = DynamicFetcher.fetch(
+    'https://example.com',
+    cdp_url='http://localhost:9222'
+)
+```
+
+### Custom Headers and Referer
+
+```python
+page = DynamicFetcher.fetch(
+    'https://example.com',
+    headless=True,
+    google_search=True,  # Add Google search referer (default)
+    extra_headers={
+        'Authorization': 'Bearer token',
+        'Custom-Header': 'value'
+    }
+)
+```
+
+## Session Management
+
+### Basic Session
+
+```python
+from scrapling.fetchers import DynamicSession
+
+with DynamicSession(
+    headless=True,
+    disable_resources=True,
+    network_idle=True
+) as session:
+    page1 = session.fetch('https://example.com/login')
+    page2 = session.fetch('https://example.com/dashboard')  # Cookies maintained
+```
+
+### Async Session with Page Pool
+
+```python
+import asyncio
+from scrapling.fetchers import AsyncDynamicSession
+
+async def scrape():
+    async with AsyncDynamicSession(
+        headless=True,
+        max_pages=5  # Pool of 5 browser tabs
+    ) as session:
+        # Concurrent requests (reuses tabs)
+        tasks = [
+            session.fetch(f'https://example.com/page{i}')
+            for i in range(10)
+        ]
+        
+        # Check pool status
+        print(session.get_pool_stats())  # {busy: 5, free: 0, error: 0}
+        
+        results = await asyncio.gather(*tasks)
+        
+        print(session.get_pool_stats())  # {busy: 0, free: 5, error: 0}
+
+asyncio.run(scrape())
+```
+
+### Per-Request Proxy Override
+
+```python
+with DynamicSession(headless=True) as session:
+    # Default session proxy
+    page1 = session.fetch('https://example.com')
+    
+    # Override with different proxy
+    page2 = session.fetch(
+        'https://example.com',
+        proxy='http://different-proxy:8080'
+    )
+```
+
+## Practical Examples
+
+### Infinite Scroll
+
+```python
+def scroll_page(page):
+    for _ in range(5):  # Scroll 5 times
+        page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+        page.wait_for_timeout(2000)  # Wait 2s between scrolls
+
+page = DynamicFetcher.fetch(
+    'https://infinite-scroll-site.com',
+    headless=True,
+    page_action=scroll_page
+)
+
+items = page.css('.item').getall()
+```
+
+### Form Submission
+
+```python
+def submit_form(page):
+    # Fill form fields
+    page.fill('input[name="username"]', 'user')
+    page.fill('input[name="password"]', 'pass')
+    
+    # Submit
+    page.click('button[type="submit"]')
+    
+    # Wait for redirect
+    page.wait_for_url('**/dashboard')
+
+page = DynamicFetcher.fetch(
+    'https://example.com/login',
+    headless=True,
+    page_action=submit_form
+)
+```
+
+### Load More Button
+
+```python
+def load_all(page):
+    while True:
+        try:
+            # Click "Load More" button
+            page.click('button.load-more', timeout=3000)
+            page.wait_for_timeout(1000)
+        except:
+            # Button no longer exists
+            break
+
+page = DynamicFetcher.fetch(
+    'https://example.com',
+    headless=True,
+    page_action=load_all
+)
+
+all_items = page.css('.item').getall()
+```
+
+### Screenshot Capture
+
+```python
+def capture_screenshot(page):
+    page.screenshot(path='screenshot.png', full_page=True)
+
+page = DynamicFetcher.fetch(
+    'https://example.com',
+    headless=True,
+    page_action=capture_screenshot
+)
+```
+
+## Error Handling
+
+```python
+from scrapling.fetchers import DynamicFetcher
+from playwright.sync_api import TimeoutError, Error
+
+try:
+    page = DynamicFetcher.fetch(
+        'https://example.com',
+        headless=True,
+        timeout=30000,
+        wait_selector='.content',
+        wait_selector_state='visible'
+    )
+except TimeoutError:
+    print("Request or selector wait timed out")
+except Error as e:
+    print(f"Browser error: {e}")
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use sessions for multiple requests">
+    Always use `DynamicSession` when making multiple requests. This keeps the browser open and maintains cookies.
+  </Accordion>
+
+  <Accordion title="Block resources when possible">
+    Enable `disable_resources=True` to block images, fonts, and stylesheets for faster page loads.
+  </Accordion>
+
+  <Accordion title="Set appropriate timeouts">
+    Complex SPAs may need longer timeouts. Set `timeout=60000` or higher for slow-loading pages.
+  </Accordion>
+
+  <Accordion title="Use network_idle wisely">
+    Only use `network_idle=True` when necessary - it adds extra wait time. For most cases, `load_dom=True` is sufficient.
+  </Accordion>
+
+  <Accordion title="Leverage page_action for complex flows">
+    Use `page_action` instead of making multiple fetch calls for interactions on the same page.
+  </Accordion>
+
+  <Accordion title="Pool browser tabs in async">
+    Use `max_pages` to control concurrent tab usage in async sessions. Default is 1.
+  </Accordion>
+</AccordionGroup>
+
+## Comparison with Other Fetchers
+
+| Feature | Fetcher | StealthyFetcher | DynamicFetcher |
+|---------|---------|-----------------|----------------|
+| Speed | ⚡⚡⚡ | ⚡⚡ | ⚡ |
+| JavaScript | ❌ | ✅ | ✅ |
+| Cloudflare Bypass | ❌ | ✅ | ❌ |
+| Page Actions | ❌ | ✅ | ✅ |
+| Stealth Features | ❌ | ✅ | ❌ |
+| Resource Usage | Low | Medium | High |
+| Best For | Static sites | Anti-bot bypass | SPAs, automation |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Stealthy Mode" icon="mask" href="/fetching/stealthy-mode">
+    Learn about StealthyFetcher for anti-bot bypass
+  </Card>
+  <Card title="Sessions" icon="arrows-rotate" href="/fetching/sessions">
+    Master session management
+  </Card>
+  <Card title="Proxy Rotation" icon="shuffle" href="/fetching/proxy-rotation">
+    Rotate proxies automatically
+  </Card>
+</CardGroup>

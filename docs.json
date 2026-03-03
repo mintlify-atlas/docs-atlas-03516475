@@ -1,122 +1,156 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Scrapling",
+  "theme": "aspen",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#6B46C1",
+    "light": "#9F7AEA",
+    "dark": "#553C9A"
   },
-  "favicon": "/favicon.svg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/D4Vinci/Scrapling"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/D4Vinci/Scrapling",
+      "discord": "https://discord.gg/EMgGbDceNQ",
+      "x": "https://x.com/Scrapling_dev"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Getting Started",
             "pages": [
-              "index",
-              "quickstart",
-              "development"
+              "introduction",
+              "installation",
+              "quickstart"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "concepts/architecture",
+              "concepts/fetchers",
+              "concepts/parsing",
+              "concepts/sessions"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Fetching",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "fetching/choosing-fetcher",
+              "fetching/static-requests",
+              "fetching/stealthy-mode",
+              "fetching/browser-automation",
+              "fetching/sessions",
+              "fetching/proxy-rotation"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Parsing & Selection",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "parsing/selectors",
+              "parsing/navigation",
+              "parsing/extraction",
+              "parsing/adaptive-scraping"
+            ]
+          },
+          {
+            "group": "Spiders",
+            "pages": [
+              "spiders/getting-started",
+              "spiders/architecture",
+              "spiders/requests-responses",
+              "spiders/sessions",
+              "spiders/advanced-features",
+              "spiders/pause-resume"
+            ]
+          },
+          {
+            "group": "CLI & Tools",
+            "pages": [
+              "cli/overview",
+              "cli/interactive-shell",
+              "cli/extract-commands"
+            ]
+          },
+          {
+            "group": "AI Integration",
+            "pages": [
+              "ai/mcp-server",
+              "ai/setup",
+              "ai/capabilities"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/anti-bot-bypass",
+              "guides/cloudflare-turnstile",
+              "guides/handling-blocked-requests",
+              "guides/performance-optimization",
+              "guides/error-handling"
+            ]
+          },
+          {
+            "group": "Tutorials",
+            "pages": [
+              "tutorials/migrating-from-beautifulsoup",
+              "tutorials/migrating-from-scrapy",
+              "tutorials/building-first-spider",
+              "tutorials/real-world-examples"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Fetchers",
             "pages": [
-              "api-reference/introduction"
+              "api/fetcher",
+              "api/stealthy-fetcher",
+              "api/dynamic-fetcher",
+              "api/fetcher-sessions"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Parsing",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/selector",
+              "api/selectors",
+              "api/response",
+              "api/attributes-handler",
+              "api/text-handler"
+            ]
+          },
+          {
+            "group": "Spiders",
+            "pages": [
+              "api/spider",
+              "api/request",
+              "api/crawler-engine",
+              "api/session-manager",
+              "api/crawl-result"
+            ]
+          },
+          {
+            "group": "Utilities",
+            "pages": [
+              "api/proxy-rotator",
+              "api/custom-types"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

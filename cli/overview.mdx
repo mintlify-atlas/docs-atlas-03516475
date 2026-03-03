@@ -1,0 +1,92 @@
+---
+title: CLI Overview
+description: Command-line interface for web scraping operations
+---
+
+Scrapling provides a powerful command-line interface for web scraping tasks without writing any code. The CLI includes commands for installing dependencies, running an interactive shell, extracting content from web pages, and starting the MCP server.
+
+## Available Commands
+
+The Scrapling CLI offers the following main commands:
+
+### Install
+
+Install all Scrapling fetcher dependencies including Playwright browsers:
+
+```bash
+scrapling install
+```
+
+Options:
+- `-f`, `--force` - Force reinstall all dependencies
+
+### Shell
+
+Launch an interactive scraping console:
+
+```bash
+scrapling shell
+```
+
+Options:
+- `-c`, `--code` - Evaluate code in the shell, print result and exit
+- `-L`, `--loglevel` - Set log level (debug, info, warning, error, critical, fatal)
+
+### Extract
+
+Fetch web pages and extract content as HTML, Markdown, or text:
+
+```bash
+scrapling extract [COMMAND]
+```
+
+Supported HTTP methods:
+- `get` - Perform GET requests
+- `post` - Perform POST requests
+- `put` - Perform PUT requests
+- `delete` - Perform DELETE requests
+- `fetch` - Use browser automation (DynamicFetcher)
+- `stealthy-fetch` - Use stealth browser automation (StealthyFetcher)
+
+### MCP Server
+
+Run Scrapling's Model Context Protocol (MCP) server:
+
+```bash
+scrapling mcp
+```
+
+Options:
+- `--http` - Use streamable-http transport instead of stdio
+- `--host` - Host address (default: 0.0.0.0)
+- `--port` - Port number (default: 8000)
+
+## Output Formats
+
+All extract commands support multiple output formats based on file extension:
+
+- `.html` - Raw HTML content
+- `.md` - Markdown conversion of HTML
+- `.txt` - Plain text content
+
+## Common Options
+
+Most extract commands support these options:
+
+- `--headers`, `-H` - HTTP headers in format "Key: Value"
+- `--cookies` - Cookie string "name1=value1; name2=value2"
+- `--timeout` - Request timeout in seconds/milliseconds
+- `--proxy` - Proxy URL "http://username:password@host:port"
+- `--css-selector`, `-s` - CSS selector for specific content
+- `--params`, `-p` - Query parameters "key=value"
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Interactive Shell" icon="terminal" href="/cli/interactive-shell">
+    Learn about the interactive shell features
+  </Card>
+  <Card title="Extract Commands" icon="download" href="/cli/extract-commands">
+    Detailed guide on extract commands
+  </Card>
+</CardGroup>

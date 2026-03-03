@@ -1,0 +1,114 @@
+---
+title: Interactive Shell
+description: Interactive console for web scraping exploration
+---
+
+The Scrapling interactive shell provides a REPL (Read-Eval-Print Loop) environment for testing and exploring web scraping operations in real-time.
+
+## Starting the Shell
+
+Launch the interactive shell:
+
+```bash
+scrapling shell
+```
+
+## Shell Options
+
+### Execute Code and Exit
+
+Run a single command and exit:
+
+```bash
+scrapling shell -c "print('Hello from Scrapling')"
+```
+
+### Set Log Level
+
+Control logging verbosity:
+
+```bash
+scrapling shell --loglevel info
+```
+
+Available log levels:
+- `debug` - Detailed debugging information (default)
+- `info` - General informational messages
+- `warning` - Warning messages only
+- `error` - Error messages only
+- `critical` - Critical errors only
+- `fatal` - Fatal errors only
+
+## Usage Examples
+
+### Basic Command Execution
+
+```bash
+# Run with specific code
+scrapling shell -c "Fetcher.get('https://example.com')"
+```
+
+### Custom Log Level
+
+```bash
+# Reduce verbosity
+scrapling shell -L warning
+```
+
+### Interactive Mode
+
+```bash
+# Start interactive session
+scrapling shell
+
+# Now you can run commands interactively:
+>>> from scrapling import Fetcher
+>>> response = Fetcher.get('https://example.com')
+>>> print(response.status)
+```
+
+## Features
+
+The interactive shell provides:
+
+- **REPL Environment** - Test scraping commands in real-time
+- **Auto-completion** - Tab completion for Scrapling objects
+- **History** - Access previous commands
+- **Custom Logging** - Configurable log levels
+- **Direct Execution** - Run one-off commands with `-c` flag
+
+## Shell Environment
+
+When you start the shell, you have immediate access to:
+
+- All Scrapling fetchers (Fetcher, DynamicFetcher, StealthyFetcher)
+- Response objects and their methods
+- CSS selector operations
+- Content extraction utilities
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use debug level for development">
+    When exploring new websites, use `--loglevel debug` to see detailed request/response information.
+  </Accordion>
+  
+  <Accordion title="Test selectors interactively">
+    Use the shell to test CSS selectors before implementing them in your scripts.
+  </Accordion>
+  
+  <Accordion title="Quick prototyping">
+    Use `-c` flag for quick one-off scraping tasks without writing a full script.
+  </Accordion>
+</AccordionGroup>
+
+## Related Commands
+
+<CardGroup cols={2}>
+  <Card title="CLI Overview" icon="terminal" href="/cli/overview">
+    View all available CLI commands
+  </Card>
+  <Card title="Extract Commands" icon="download" href="/cli/extract-commands">
+    Learn about content extraction
+  </Card>
+</CardGroup>

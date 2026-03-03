@@ -1,0 +1,554 @@
+---
+title: Performance Optimization
+description: Speed up your web scraping with performance best practices
+---
+
+Scrapling provides multiple ways to optimize scraping performance, from resource blocking to concurrent requests and page pooling.
+
+## Resource Blocking
+
+Block unnecessary resources to speed up page loads:
+
+### Disable Resources
+
+Block fonts, images, media, and other non-essential resources:
+
+```python
+from scrapling import StealthyFetcher
+
+response = StealthyFetcher.fetch(
+    'https://example.com',
+    disable_resources=True  # Significant speed boost
+)
+```
+
+Blocked resource types:
+- `font` - Web fonts
+- `image` - Images and icons
+- `media` - Videos and audio
+- `beacon` - Analytics beacons
+- `object` - Embedded objects
+- `imageset` - Responsive images
+- `texttrack` - Video subtitles
+- `websocket` - WebSocket connections
+- `csp_report` - CSP reports
+- `stylesheet` - CSS files
+
+**Source:** `scrapling/engines/constants.py:2-13`
+
+### Block Specific Domains
+
+Block analytics and tracking domains:
+
+```python
+response = StealthyFetcher.fetch(
+    'https://example.com',
+    blocked_domains={
+        'google-analytics.com',
+        'facebook.com',
+        'doubleclick.net',
+        'googletagmanager.com',
+        'hotjar.com',
+    }
+)
+```
+
+<Note>
+Subdomains are automatically matched: blocking `example.com` also blocks `sub.example.com`.
+</Note>
+
+**Source:** `scrapling/engines/_browsers/_stealth.py:199`
+
+## Concurrency Settings
+
+### Concurrent Requests
+
+Control how many requests run simultaneously:
+
+```python
+from scrapling import Spider
+
+class FastSpider(Spider):
+    name = 'fast_spider'
+    concurrent_requests = 16  # Process 16 requests at once (default: 4)
+    
+    start_urls = ['https://example.com']
+    
+    async def parse(self, response):
+        yield {'title': response.css('title::text').get()}
+```
+
+**Source:** `scrapling/spiders/spider.py:76`
+
+### Per-Domain Concurrency
+
+Limit concurrent requests per domain to avoid overwhelming servers:
+
+```python
+class PoliteSpider(Spider):
+    name = 'polite_spider'
+    concurrent_requests = 16
+    concurrent_requests_per_domain = 2  # Max 2 simultaneous requests per domain
+    
+    start_urls = ['https://example.com']
+    
+    async def parse(self, response):
+        yield {'data': response.css('.content::text').get()}
+```
+
+**Source:** `scrapling/spiders/spider.py:77`
+
+### Download Delay
+
+Add delay between requests to the same domain:
+
+```python
+class ThrottledSpider(Spider):
+    name = 'throttled_spider'
+    download_delay = 2.0  # Wait 2 seconds between requests to same domain
+    
+    start_urls = ['https://example.com']
+    
+    async def parse(self, response):
+        yield {'content': response.text}
+```
+
+**Source:** `scrapling/spiders/spider.py:78`
+
+## Page Pooling
+
+Reuse browser pages instead of creating new ones:
+
+### Session Page Pooling
+
+```python
+from scrapling import StealthySession
+
+# Create session with page pool
+with StealthySession(max_pages=5) as session:
+    # Pages are reused from the pool
+    for url in urls:
+        response = session.fetch(url)
+        # Process response
+```
+
+**Configuration:** `scrapling/engines/_browsers/_validators.py:62`
+
+### Pool Statistics
+
+Monitor page pool usage:
+
+```python
+with StealthySession(max_pages=10) as session:
+    response = session.fetch('https://example.com')
+    
+    stats = session.get_pool_stats()
+    print(f"Total pages: {stats['total_pages']}")
+    print(f"Busy pages: {stats['busy_pages']}")
+    print(f"Max pages: {stats['max_pages']}")
+```
+
+**Source:** `scrapling/engines/_browsers/_base.py:125-131`
+
+## Network Optimization
+
+### Skip Network Idle
+
+Don't wait for network to be completely idle:
+
+```python
+response = StealthyFetcher.fetch(
+    'https://example.com',
+    network_idle=False  # Don't wait for network idle (default)
+)
+```
+
+Only enable `network_idle=True` when you need to ensure all async requests complete.
+
+**Source:** `scrapling/engines/_browsers/_stealth.py:52`
+
+### Skip DOM Loading
+
+For static content, skip waiting for JavaScript:
+
+```python
+response = StealthyFetcher.fetch(
+    'https://example.com',
+    load_dom=False  # Don't wait for DOMContentLoaded
+)
+```
+
+<Warning>
+Disabling `load_dom` may result in incomplete content for JavaScript-heavy sites. Default is `True`.
+</Warning>
+
+**Source:** `scrapling/engines/_browsers/_stealth.py:67`
+
+### Reduce Wait Time
+
+Minimize or remove post-load wait:
+
+```python
+response = StealthyFetcher.fetch(
+    'https://example.com',
+    wait=0  # No wait after page loads (default)
+)
+```
+
+**Source:** `scrapling/engines/_browsers/_stealth.py:54`
+
+## Timeout Optimization
+
+Set appropriate timeouts:
+
+```python
+response = StealthyFetcher.fetch(
+    'https://example.com',
+    timeout=15000  # 15 seconds (default: 30 seconds)
+)
+```
+
+Lower timeouts fail faster on slow sites, higher timeouts give more time for complex pages.
+
+**Source:** `scrapling/engines/_browsers/_stealth.py:53`
+
+## Headless Mode
+
+Always use headless mode in production:
+
+```python
+response = StealthyFetcher.fetch(
+    'https://example.com',
+    headless=True  # Faster than headful (default)
+)
+```
+
+Headful mode is 20-30% slower and should only be used for debugging.
+
+**Source:** `scrapling/engines/_browsers/_stealth.py:46`
+
+## Browser Flags
+
+Scrapling uses optimized browser flags by default:
+
+```python
+DEFAULT_ARGS = (
+    '--no-pings',
+    '--no-first-run',
+    '--disable-infobars',
+    '--disable-breakpad',
+    '--no-service-autorun',
+    '--homepage=about:blank',
+    '--password-store=basic',
+    '--disable-hang-monitor',
+    '--no-default-browser-check',
+    '--disable-session-crashed-bubble',
+    '--disable-search-engine-choice-screen',
+)
+```
+
+**Source:** `scrapling/engines/constants.py:24-37`
+
+Add custom flags for additional optimization:
+
+```python
+response = StealthyFetcher.fetch(
+    'https://example.com',
+    extra_flags=[
+        '--disable-gpu',
+        '--single-process',
+    ]
+)
+```
+
+## Complete Optimization Example
+
+### Maximum Speed Configuration
+
+```python
+from scrapling import Spider, StealthySession
+
+class UltraFastSpider(Spider):
+    name = 'ultra_fast'
+    start_urls = ['https://example.com']
+    
+    # Concurrency
+    concurrent_requests = 32
+    concurrent_requests_per_domain = 4
+    download_delay = 0.5
+    
+    def configure_sessions(self, manager):
+        manager.add('fast', StealthySession(
+            # Page pooling
+            max_pages=10,
+            
+            # Resource blocking
+            disable_resources=True,
+            blocked_domains={
+                'google-analytics.com',
+                'googletagmanager.com',
+                'facebook.com',
+            },
+            
+            # Network optimization
+            network_idle=False,
+            load_dom=True,
+            wait=0,
+            timeout=15000,
+            
+            # Headless mode
+            headless=True,
+        ))
+    
+    async def parse(self, response):
+        yield {'title': response.css('title::text').get()}
+        
+        # Follow links
+        for link in response.css('a::attr(href)').getall()[:10]:
+            yield response.follow(link, callback=self.parse_item)
+    
+    async def parse_item(self, response):
+        yield {
+            'url': response.url,
+            'content': response.css('.content::text').get(),
+        }
+
+if __name__ == '__main__':
+    spider = UltraFastSpider()
+    result = spider.start(use_uvloop=True)  # Use faster event loop
+    print(f"Scraped {len(result.items)} items")
+```
+
+### Balanced Configuration
+
+For sites that need more stability:
+
+```python
+class BalancedSpider(Spider):
+    name = 'balanced'
+    start_urls = ['https://example.com']
+    
+    concurrent_requests = 8
+    concurrent_requests_per_domain = 2
+    download_delay = 1.0
+    
+    def configure_sessions(self, manager):
+        manager.add('balanced', StealthySession(
+            max_pages=5,
+            disable_resources=True,
+            network_idle=False,
+            load_dom=True,
+            wait=500,  # Small wait for JS
+            timeout=30000,
+            headless=True,
+        ))
+    
+    async def parse(self, response):
+        yield {'data': response.css('.data::text').get()}
+```
+
+## Async Best Practices
+
+### Use uvloop
+
+Use uvloop for faster async performance:
+
+```python
+spider = MySpider()
+result = spider.start(use_uvloop=True)  # 2-4x faster event loop
+```
+
+**Source:** `scrapling/spiders/spider.py:264-281`
+
+### Batch Processing
+
+Process items in batches:
+
+```python
+class BatchSpider(Spider):
+    name = 'batch_processor'
+    start_urls = ['https://example.com']
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.batch = []
+        self.batch_size = 100
+    
+    async def on_scraped_item(self, item):
+        self.batch.append(item)
+        
+        if len(self.batch) >= self.batch_size:
+            await self._save_batch()
+            self.batch = []
+        
+        return item
+    
+    async def _save_batch(self):
+        # Batch save to database
+        await db.insert_many(self.batch)
+    
+    async def on_close(self):
+        # Save remaining items
+        if self.batch:
+            await self._save_batch()
+    
+    async def parse(self, response):
+        yield {'data': response.css('.item::text').get()}
+```
+
+## Memory Optimization
+
+### Parser Storage
+
+For huge HTML documents, use disk-based storage:
+
+```python
+from scrapling import Fetcher
+
+Fetcher.configure(
+    huge_tree=True,  # Use libxml2 HUGE_TREE option
+    storage='disk'   # Store parsed tree on disk instead of memory
+)
+
+response = Fetcher.fetch('https://huge-page.com')
+```
+
+**Source:** `scrapling/engines/toolbelt/custom.py:140-154`
+
+### Adaptive Parsing
+
+Adaptive mode reduces memory for simple selections:
+
+```python
+Fetcher.configure(adaptive=True)
+
+response = Fetcher.fetch('https://example.com')
+# Uses minimal DOM representation for CSS/XPath queries
+```
+
+**Source:** `scrapling/engines/toolbelt/custom.py:141`
+
+## Benchmarking
+
+Track performance metrics:
+
+```python
+from scrapling import Spider
+import time
+
+class BenchmarkSpider(Spider):
+    name = 'benchmark'
+    start_urls = ['https://example.com']
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.start_time = None
+    
+    async def on_start(self, resuming=False):
+        self.start_time = time.time()
+        self.logger.info("Starting benchmark...")
+    
+    async def on_close(self):
+        duration = time.time() - self.start_time
+        
+        stats = self.stats
+        self.logger.info(f"Duration: {duration:.2f}s")
+        self.logger.info(f"Requests: {stats.request_count}")
+        self.logger.info(f"Items: {stats.item_count}")
+        self.logger.info(
+            f"Throughput: {stats.request_count / duration:.2f} req/s"
+        )
+        self.logger.info(
+            f"Items/s: {stats.item_count / duration:.2f}"
+        )
+    
+    async def parse(self, response):
+        yield {'data': response.css('title::text').get()}
+```
+
+## Performance Comparison
+
+| Configuration | Requests/sec | Use Case |
+|--------------|--------------|----------|
+| Ultra Fast | 30-50 | Simple HTML, no anti-bot |
+| Balanced | 10-20 | JavaScript sites, moderate protection |
+| Stealth | 3-8 | Heavy anti-bot, Cloudflare |
+| Conservative | 1-3 | Rate-limited APIs, respectful scraping |
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Profile Before Optimizing">
+    Measure performance before making changes:
+    
+    ```python
+    import time
+    
+    start = time.time()
+    response = StealthyFetcher.fetch('https://example.com')
+    duration = time.time() - start
+    
+    print(f"Fetch took {duration:.2f}s")
+    ```
+  </Accordion>
+
+  <Accordion title="Use Resource Blocking">
+    Always block unnecessary resources:
+    
+    ```python
+    # Fast
+    response = StealthyFetcher.fetch(
+        url,
+        disable_resources=True,
+        blocked_domains={'analytics.com'}
+    )
+    
+    # Slow
+    response = StealthyFetcher.fetch(url)
+    ```
+  </Accordion>
+
+  <Accordion title="Tune Concurrency">
+    Start conservative, increase gradually:
+    
+    ```python
+    concurrent_requests = 4   # Start
+    concurrent_requests = 8   # Test
+    concurrent_requests = 16  # Optimize
+    ```
+    
+    Monitor error rates as you increase concurrency.
+  </Accordion>
+
+  <Accordion title="Use Sessions for Multiple Requests">
+    Sessions reuse connections and browser instances:
+    
+    ```python
+    # Slow - creates new browser each time
+    for url in urls:
+        response = StealthyFetcher.fetch(url)
+    
+    # Fast - reuses browser
+    with StealthySession() as session:
+        for url in urls:
+            response = session.fetch(url)
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Anti-Bot Bypass" icon="user-secret" href="/guides/anti-bot-bypass">
+    Balance speed with stealth
+  </Card>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/guides/error-handling">
+    Handle errors efficiently
+  </Card>
+  <Card title="Handling Blocked Requests" icon="ban" href="/guides/handling-blocked-requests">
+    Retry strategies
+  </Card>
+  <Card title="Cloudflare Turnstile" icon="shield-check" href="/guides/cloudflare-turnstile">
+    Solve challenges faster
+  </Card>
+</CardGroup>

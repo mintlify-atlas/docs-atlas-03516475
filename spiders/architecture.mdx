@@ -1,0 +1,233 @@
+---
+title: Spider Architecture
+description: Understanding the components and data flow of Scrapling's spider framework
+---
+
+<Info>
+**Prerequisites**
+
+1. You've completed or read the [Fetchers basics](/fetching/choosing-fetcher) page to understand the different fetcher types and when to use each one.
+2. You've completed or read the [Main classes](/parsing/main_classes) page to understand the [Selector](/parsing/main_classes#selector) and [Response](/api/response) classes.
+</Info>
+
+Scrapling's spider system is a Scrapy-inspired async crawling framework designed for concurrent, multi-session crawls with built-in pause/resume support. It brings together Scrapling's parsing engine and fetchers into a unified crawling API while adding scheduling, concurrency control, and checkpointing.
+
+If you're familiar with Scrapy, you'll feel right at home. If not, don't worry — the system is designed to be straightforward.
+
+## Data Flow
+
+Here's what happens step by step when you run a spider:
+
+1. The **Spider** produces the first batch of `Request` objects. By default, it creates one request for each URL in `start_urls`, but you can override `start_requests()` for custom logic.
+
+2. The **Scheduler** receives requests and places them in a priority queue, creating fingerprints for deduplication. Higher-priority requests are dequeued first.
+
+3. The **Crawler Engine** asks the **Scheduler** to dequeue the next request, respecting concurrency limits (global and per-domain) and download delays. Once received, it passes the request to the **Session Manager**, which routes it to the correct session based on the request's `sid` (session ID).
+
+4. The **session** fetches the page and returns a [Response](/api/response) object to the **Crawler Engine**. The engine records statistics and checks for blocked responses. If the response is blocked, the engine retries the request up to `max_blocked_retries` times. The blocking detection and retry logic can be customized.
+
+5. The **Crawler Engine** passes the [Response](/api/response) to the request's callback. The callback either yields a dictionary (treated as a scraped item) or a follow-up request (sent to the scheduler for queuing).
+
+6. The cycle repeats from step 2 until the scheduler is empty and no tasks are active, or the spider is paused.
+
+7. If `crawldir` is set, the **Crawler Engine** periodically saves a checkpoint (pending requests + seen URLs set) to disk. On graceful shutdown (Ctrl+C), a final checkpoint is saved. The next time the spider runs with the same `crawldir`, it resumes from where it left off — skipping `start_requests()` and restoring the scheduler state.
+
+## Components
+
+### Spider
+
+The central class you interact with. You subclass `Spider`, define your `start_urls` and `parse()` method, and optionally configure sessions and override lifecycle hooks.
+
+```python spider.py:36-48
+from scrapling.spiders import Spider, Response, Request
+
+class MySpider(Spider):
+    name = "my_spider"
+    start_urls = ["https://example.com"]
+
+    async def parse(self, response: Response):
+        for link in response.css("a::attr(href)").getall():
+            yield response.follow(link, callback=self.parse_page)
+
+    async def parse_page(self, response: Response):
+        yield {"title": response.css("h1::text").get("")}
+```
+
+**Key class attributes:**
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `name` | `str` | Required | Unique identifier for the spider |
+| `start_urls` | `list[str]` | `[]` | List of URLs to start crawling from |
+| `allowed_domains` | `set[str]` | `set()` | Restrict crawling to these domains |
+| `concurrent_requests` | `int` | `4` | Maximum concurrent requests |
+| `concurrent_requests_per_domain` | `int` | `0` | Per-domain concurrency limit (0 = disabled) |
+| `download_delay` | `float` | `0.0` | Seconds to wait before each request |
+| `max_blocked_retries` | `int` | `3` | Retry attempts for blocked requests |
+
+**Fingerprint settings:**
+
+| Attribute | Default | Description |
+|-----------|---------|-------------|
+| `fp_include_kwargs` | `False` | Include request kwargs in fingerprint |
+| `fp_keep_fragments` | `False` | Keep URL fragments (#section) in fingerprint |
+| `fp_include_headers` | `False` | Include headers in fingerprint |
+
+### Crawler Engine
+
+The engine orchestrates the entire crawl. It manages the main loop, enforces concurrency limits, dispatches requests through the Session Manager, and processes results from callbacks. You don't interact with it directly — the `Spider.start()` and `Spider.stream()` methods handle it for you.
+
+**Key responsibilities:**
+
+- Manages the crawl lifecycle
+- Enforces global and per-domain concurrency limits
+- Handles download delays
+- Detects and retries blocked requests
+- Manages checkpoint saves/restores
+- Collects statistics and logs
+
+### Scheduler
+
+A priority queue with built-in URL deduplication. Requests are fingerprinted based on their URL, HTTP method, body, and session ID.
+
+```python scheduler.py:30-45
+async def enqueue(self, request: Request) -> bool:
+    """Add a request to the queue."""
+    fingerprint = request.update_fingerprint(self._include_kwargs, self._include_headers, self._keep_fragments)
+
+    if not request.dont_filter and fingerprint in self._seen:
+        log.debug("Dropped duplicate request: %s", request)
+        return False
+
+    self._seen.add(fingerprint)
+
+    # Negative priority so higher priority = dequeued first
+    counter = next(self._counter)
+    item = (-request.priority, counter, request)
+    self._pending[counter] = item
+    await self._queue.put(item)
+    return True
+```
+
+The scheduler supports `snapshot()` and `restore()` for the checkpoint system, allowing the crawl state to be saved and resumed.
+
+### Session Manager
+
+Manages one or more named session instances. Each session is one of:
+
+- [FetcherSession](/fetching/static-requests)
+- [AsyncDynamicSession](/fetching/browser-automation)
+- [AsyncStealthySession](/fetching/stealthy-mode)
+
+When a request comes in, the Session Manager routes it to the correct session based on the request's `sid` field. Sessions can be started with the spider start (default) or lazily (started on the first use).
+
+```python session.py:22-41
+def add(self, session_id: str, session: Session, *, default: bool = False, lazy: bool = False) -> "SessionManager":
+    """Register a session instance.
+
+    :param session_id: Name to reference this session in requests
+    :param session: Your pre-configured session instance
+    :param default: If True, this becomes the default session
+    :param lazy: If True, the session will be started only when a request uses its ID.
+    """
+    if session_id in self._sessions:
+        raise ValueError(f"Session '{session_id}' already registered")
+
+    self._sessions[session_id] = session
+
+    if default or self._default_session_id is None:
+        self._default_session_id = session_id
+
+    if lazy:
+        self._lazy_sessions.add(session_id)
+
+    return self
+```
+
+### Checkpoint System
+
+An optional system that, if enabled, saves the crawler's state (pending requests + seen URL fingerprints) to a pickle file on disk.
+
+```python checkpoint.py:42-61
+async def save(self, data: CheckpointData) -> None:
+    """Save checkpoint data to disk atomically."""
+    await self.crawldir.mkdir(parents=True, exist_ok=True)
+
+    temp_path = self._checkpoint_path.with_suffix(".tmp")
+
+    try:
+        serialized = pickle.dumps(data, protocol=pickle.HIGHEST_PROTOCOL)
+        async with await anyio.open_file(temp_path, "wb") as f:
+            await f.write(serialized)
+
+        await temp_path.rename(self._checkpoint_path)
+
+        log.info(f"Checkpoint saved: {len(data.requests)} requests, {len(data.seen)} seen URLs")
+    except Exception as e:
+        # Clean up temp file if it exists
+        if await temp_path.exists():
+            await temp_path.unlink()
+        log.error(f"Failed to save checkpoint: {e}")
+        raise
+```
+
+Writes are atomic (temp file + rename) to prevent corruption. Checkpoints are saved periodically at a configurable interval and on graceful shutdown. Upon successful completion (not paused), checkpoint files are automatically cleaned up.
+
+### Output
+
+Scraped items are collected in an `ItemList` (a list subclass with `to_json()` and `to_jsonl()` export methods). Crawl statistics are tracked in a `CrawlStats` dataclass.
+
+```python result.py:10-38
+class ItemList(list):
+    """A list of scraped items with export capabilities."""
+
+    def to_json(self, path: Union[str, Path], *, indent: bool = False):
+        """Export items to a JSON file.
+
+        :param path: Path to the output file
+        :param indent: Pretty-print with 2-space indentation (slightly slower)
+        """
+        options = orjson.OPT_SERIALIZE_NUMPY
+        if indent:
+            options |= orjson.OPT_INDENT_2
+
+        file = Path(path)
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_bytes(orjson.dumps(list(self), option=options))
+        log.info("Saved %d items to %s", len(self), path)
+
+    def to_jsonl(self, path: Union[str, Path]):
+        """Export items as JSON Lines (one JSON object per line).
+
+        :param path: Path to the output file
+        """
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "wb") as f:
+            for item in self:
+                f.write(orjson.dumps(item, option=orjson.OPT_SERIALIZE_NUMPY))
+                f.write(b"\n")
+        log.info("Saved %d items to %s", len(self), path)
+```
+
+## Comparison with Scrapy
+
+If you're coming from Scrapy, here's how Scrapling's spider system maps:
+
+| Concept | Scrapy | Scrapling |
+|---------|--------|----------|
+| Spider definition | `scrapy.Spider` subclass | `scrapling.spiders.Spider` subclass |
+| Initial requests | `start_requests()` | `async start_requests()` |
+| Callbacks | `def parse(self, response)` | `async def parse(self, response)` |
+| Following links | `response.follow(url)` | `response.follow(url)` |
+| Item output | `yield dict` or `yield Item` | `yield dict` |
+| Request scheduling | Scheduler + Dupefilter | Scheduler with built-in deduplication |
+| Downloading | Downloader + Middlewares | Session Manager with multi-session support |
+| Item processing | Item Pipelines | `on_scraped_item()` hook |
+| Blocked detection | Through custom middlewares | Built-in `is_blocked()` + `retry_blocked_request()` hooks |
+| Concurrency | `CONCURRENT_REQUESTS` setting | `concurrent_requests` class attribute |
+| Domain filtering | `allowed_domains` | `allowed_domains` |
+| Pause/Resume | `JOBDIR` setting | `crawldir` constructor argument |
+| Export | Feed exports | `result.items.to_json()` / `to_jsonl()` or custom through hooks |
+| Running | `scrapy crawl spider_name` | `MySpider().start()` |
+| Streaming | N/A | `async for item in spider.stream()` |
+| Multi-session | N/A | Multiple sessions with different types per spider |

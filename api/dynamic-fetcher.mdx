@@ -1,0 +1,226 @@
+---
+title: 'DynamicFetcher'
+description: 'Browser-based fetcher with many options to fetch websites through Chromium'
+---
+
+## DynamicFetcher
+
+A `Fetcher` that provides many options to fetch and load websites' pages through chromium-based browsers using Playwright.
+
+```python
+from scrapling import DynamicFetcher
+
+response = DynamicFetcher.fetch(
+    'https://example.com',
+    headless=True
+)
+print(response.status)
+```
+
+<Note>
+  DynamicFetcher uses Playwright to control Chromium browsers. It's less stealthy than StealthyFetcher but provides full browser automation capabilities.
+</Note>
+
+### Methods
+
+#### fetch()
+
+Opens up a browser and performs your request based on your chosen options.
+
+```python
+DynamicFetcher.fetch(url: str, **kwargs) -> Response
+```
+
+<ParamField path="url" type="str" required>
+  Target URL to fetch
+</ParamField>
+
+<ParamField path="headless" type="bool" default="True">
+  Run the browser in headless/hidden (default) or headful/visible mode
+</ParamField>
+
+<ParamField path="disable_resources" type="bool" default="False">
+  Drop requests for unnecessary resources for a speed boost. Requests dropped are of type: `font`, `image`, `media`, `beacon`, `object`, `imageset`, `texttrack`, `websocket`, `csp_report`, and `stylesheet`
+</ParamField>
+
+<ParamField path="blocked_domains" type="set">
+  A set of domain names to block requests to. Subdomains are also matched (e.g., `"example.com"` blocks `"sub.example.com"` too)
+</ParamField>
+
+<ParamField path="useragent" type="str">
+  Pass a useragent string to be used. Otherwise the fetcher will generate a real Useragent of the same browser and use it
+</ParamField>
+
+<ParamField path="cookies" type="dict">
+  Set cookies for the next request
+</ParamField>
+
+<ParamField path="network_idle" type="bool" default="False">
+  Wait for the page until there are no network connections for at least 500 ms
+</ParamField>
+
+<ParamField path="load_dom" type="bool" default="True">
+  Enabled by default, wait for all JavaScript on page(s) to fully load and execute
+</ParamField>
+
+<ParamField path="timeout" type="int" default="30000">
+  The timeout in milliseconds that is used in all operations and waits through the page
+</ParamField>
+
+<ParamField path="wait" type="int" default="0">
+  The time (milliseconds) the fetcher will wait after everything finishes before closing the page and returning the Response object
+</ParamField>
+
+<ParamField path="page_action" type="Callable">
+  Added for automation. A function that takes the `page` object and does the automation you need
+</ParamField>
+
+<ParamField path="wait_selector" type="str">
+  Wait for a specific CSS selector to be in a specific state
+</ParamField>
+
+<ParamField path="wait_selector_state" type="str" default="attached">
+  The state to wait for the selector given with `wait_selector`. Options: `attached`, `detached`, `visible`, `hidden`
+</ParamField>
+
+<ParamField path="init_script" type="str">
+  An absolute path to a JavaScript file to be executed on page creation with this request
+</ParamField>
+
+<ParamField path="locale" type="str">
+  Set the locale for the browser if wanted. Defaults to the system default locale
+</ParamField>
+
+<ParamField path="real_chrome" type="bool" default="False">
+  If you have a Chrome browser installed on your device, enable this, and the Fetcher will launch an instance of your browser and use it
+</ParamField>
+
+<ParamField path="cdp_url" type="str">
+  Instead of launching a new browser instance, connect to this CDP URL to control real browsers through CDP
+</ParamField>
+
+<ParamField path="google_search" type="bool" default="True">
+  Enabled by default, Scrapling will set the referer header to be as if this request came from a Google search of this website's domain name
+</ParamField>
+
+<ParamField path="extra_headers" type="dict">
+  A dictionary of extra headers to add to the request. The referer set by the `google_search` argument takes priority over the referer set here if used together
+</ParamField>
+
+<ParamField path="proxy" type="str | dict">
+  The proxy to be used with requests. It can be a string or a dictionary with the keys 'server', 'username', and 'password' only
+</ParamField>
+
+<ParamField path="extra_flags" type="list">
+  A list of additional browser flags to pass to the browser on launch
+</ParamField>
+
+<ParamField path="selector_config" type="dict">
+  The arguments that will be passed in the end while creating the final Selector's class
+</ParamField>
+
+<ParamField path="additional_args" type="dict">
+  Additional arguments to be passed to Playwright's context as additional settings, and it takes higher priority than Scrapling's settings
+</ParamField>
+
+<ResponseField name="Response" type="Response">
+  A Response object containing the fetched page data
+</ResponseField>
+
+#### async_fetch()
+
+Asynchronous version of `fetch()`. Opens up a browser and performs your request.
+
+```python
+import asyncio
+from scrapling import DynamicFetcher
+
+async def main():
+    response = await DynamicFetcher.async_fetch('https://example.com')
+    print(response.status)
+
+asyncio.run(main())
+```
+
+```python
+DynamicFetcher.async_fetch(url: str, **kwargs) -> Response
+```
+
+All parameters are identical to `fetch()`.
+
+<ResponseField name="Response" type="Response">
+  An awaitable Response object containing the fetched page data
+</ResponseField>
+
+---
+
+## Usage Examples
+
+### Basic Browser Request
+
+```python
+from scrapling import DynamicFetcher
+
+response = DynamicFetcher.fetch('https://example.com')
+print(response.text)
+```
+
+### Page Automation
+
+```python
+def fill_form(page):
+    page.fill('#username', 'myuser')
+    page.fill('#password', 'mypass')
+    page.click('#login-button')
+
+response = DynamicFetcher.fetch(
+    'https://example.com/login',
+    page_action=fill_form,
+    wait_selector='.dashboard',
+    wait_selector_state='visible'
+)
+```
+
+### Wait for Network Idle
+
+```python
+response = DynamicFetcher.fetch(
+    'https://example.com',
+    network_idle=True,  # Wait for all network requests to complete
+    load_dom=True       # Wait for DOM to fully load
+)
+```
+
+### With Custom Headers
+
+```python
+response = DynamicFetcher.fetch(
+    'https://api.example.com',
+    extra_headers={
+        'Authorization': 'Bearer token123',
+        'X-Custom-Header': 'value'
+    },
+    google_search=False  # Disable auto-referer
+)
+```
+
+### Visible Browser (for debugging)
+
+```python
+response = DynamicFetcher.fetch(
+    'https://example.com',
+    headless=False,  # Show the browser
+    wait=5000        # Keep it open for 5 seconds
+)
+```
+
+### Performance Optimization
+
+```python
+response = DynamicFetcher.fetch(
+    'https://example.com',
+    disable_resources=True,  # Block images, fonts, etc.
+    blocked_domains={'ads.example.com', 'analytics.example.com'},
+    timeout=15000  # 15 second timeout
+)
+```

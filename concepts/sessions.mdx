@@ -1,0 +1,672 @@
+---
+title: 'Session Management'
+description: 'Understanding persistent connections and state management in Scrapling'
+---
+
+## Overview
+
+Sessions in Scrapling provide persistent connections, cookie management, and state preservation across multiple requests. They're essential for efficient scraping and authenticated workflows.
+
+<CardGroup cols={3}>
+  <Card title="HTTP Sessions" icon="globe">
+    Connection pooling for HTTP requests
+  </Card>
+  <Card title="Browser Sessions" icon="browser">
+    Persistent browser contexts
+  </Card>
+  <Card title="State Management" icon="database">
+    Cookies, headers, and configuration
+  </Card>
+</CardGroup>
+
+## Why Use Sessions?
+
+### Without Sessions
+
+```python
+from scrapling import Fetcher
+
+# Each request creates a new connection
+response1 = Fetcher.fetch('https://example.com/page1')
+response2 = Fetcher.fetch('https://example.com/page2')
+response3 = Fetcher.fetch('https://example.com/page3')
+
+# Problems:
+# - No cookie persistence
+# - New connection for each request
+# - Can't maintain login state
+# - Slower due to connection overhead
+```
+
+### With Sessions
+
+```python
+from scrapling.fetchers import FetcherSession
+
+with FetcherSession() as session:
+    # Reuses connection, maintains cookies
+    response1 = session.get('https://example.com/page1')
+    response2 = session.get('https://example.com/page2')
+    response3 = session.get('https://example.com/page3')
+
+# Benefits:
+# - Connection pooling (faster)
+# - Automatic cookie handling
+# - Maintains state across requests
+# - Cleaner configuration
+```
+
+## HTTP Sessions (FetcherSession)
+
+The `FetcherSession` provides persistent HTTP connections using `curl_cffi`.
+
+### Basic Usage
+
+```python
+from scrapling.fetchers import FetcherSession
+
+with FetcherSession() as session:
+    # All Fetcher options available
+    response = session.get('https://httpbin.org/get')
+    print(response.status)
+    
+    # Session maintains cookies automatically
+    response = session.post(
+        'https://httpbin.org/post',
+        data={'key': 'value'}
+    )
+```
+
+### Configuration
+
+Set default options for all requests in the session:
+
+```python
+with FetcherSession(
+    impersonate='chrome',           # Default browser impersonation
+    stealthy_headers=True,          # Generate realistic headers
+    headers={'X-Custom': 'Value'},  # Default headers
+    timeout=30,                     # Default timeout
+    retries=3,                      # Retry failed requests
+    retry_delay=1,                  # Delay between retries
+    follow_redirects=True,          # Follow redirects
+    max_redirects=30,               # Max redirect hops
+    verify=True,                    # Verify SSL
+    proxy='http://proxy:8080',      # Default proxy
+    http3=False                     # Enable HTTP/3
+) as session:
+    # All requests inherit these settings
+    response = session.get('https://example.com')
+```
+
+### Override Per Request
+
+Request-specific parameters override session defaults:
+
+```python
+with FetcherSession(timeout=30, headers={'X-Default': 'Value'}) as session:
+    # Use session defaults
+    response1 = session.get('https://example.com')
+    
+    # Override timeout for this request
+    response2 = session.get(
+        'https://slow-site.com',
+        timeout=60
+    )
+    
+    # Merge headers (request headers take precedence)
+    response3 = session.get(
+        'https://example.com',
+        headers={'X-Custom': 'Override'}  # Has both X-Default and X-Custom
+    )
+```
+
+### HTTP Methods
+
+```python
+with FetcherSession() as session:
+    # GET request
+    response = session.get(
+        'https://httpbin.org/get',
+        params={'key': 'value'}
+    )
+    
+    # POST request
+    response = session.post(
+        'https://httpbin.org/post',
+        data={'key': 'value'}  # Form data
+    )
+    
+    response = session.post(
+        'https://httpbin.org/post',
+        json={'key': 'value'}  # JSON data
+    )
+    
+    # PUT request
+    response = session.put(
+        'https://httpbin.org/put',
+        data={'key': 'value'}
+    )
+    
+    # DELETE request
+    response = session.delete('https://httpbin.org/delete')
+```
+
+### Cookie Handling
+
+```python
+with FetcherSession() as session:
+    # Login request sets cookies
+    login_response = session.post(
+        'https://example.com/login',
+        data={'username': 'user', 'password': 'pass'}
+    )
+    
+    # Cookies automatically included in subsequent requests
+    profile_response = session.get('https://example.com/profile')
+    
+    # Access cookies
+    print(profile_response.cookies)
+```
+
+### Persistent Configuration
+
+```python
+# Create session without context manager
+session = FetcherSession(
+    impersonate='chrome',
+    headers={'Authorization': 'Bearer token123'}
+)
+
+try:
+    session.__enter__()  # Initialize
+    
+    # Multiple requests
+    for page in range(1, 11):
+        response = session.get(f'https://api.example.com/page/{page}')
+        print(f"Page {page}: {response.status}")
+finally:
+    session.__exit__(None, None, None)  # Cleanup
+```
+
+## Browser Sessions
+
+Browser sessions maintain persistent browser contexts for multiple page loads.
+
+### DynamicSession
+
+Persistent browser context for standard automation:
+
+```python
+from scrapling.fetchers import DynamicSession
+
+with DynamicSession(
+    headless=True,
+    disable_resources=True,
+    timeout=30000
+) as session:
+    # First page load
+    response1 = session.fetch('https://example.com/login')
+    
+    # Browser state preserved (cookies, localStorage, etc.)
+    response2 = session.fetch('https://example.com/dashboard')
+    
+    # Third request in same browser context
+    response3 = session.fetch('https://example.com/profile')
+```
+
+### Configuration Options
+
+```python
+with DynamicSession(
+    headless=True,                  # Run headless
+    disable_resources=True,         # Block images, fonts, etc.
+    blocked_domains={'ads.com'},    # Block specific domains
+    useragent='Custom UA',          # Custom user agent
+    locale='en-US',                 # Browser locale
+    timeout=30000,                  # Timeout in milliseconds
+    network_idle=True,              # Wait for network idle
+    load_dom=True,                  # Wait for DOM ready
+    google_search=True,             # Add Google referer
+    extra_headers={'X-Custom': 'Value'},  # Extra headers
+    proxy='http://proxy:8080',      # Proxy configuration
+    real_chrome=True,               # Use real Chrome
+    cdp_url='http://localhost:9222', # Connect to CDP
+    user_data_dir='/path/to/profile', # Browser profile
+    extra_flags=['--flag'],         # Browser flags
+) as session:
+    response = session.fetch('https://example.com')
+```
+
+### Page Pooling
+
+Browser sessions use page pooling for better performance:
+
+```python
+from scrapling.fetchers import DynamicSession
+
+# Create session with page pool
+with DynamicSession(max_pages=5) as session:
+    # Up to 5 pages can be open simultaneously
+    # Pages are reused when closed
+    
+    for i in range(10):
+        response = session.fetch(f'https://example.com/page/{i}')
+        # Old pages automatically closed and reused
+    
+    # Check pool statistics
+    stats = session.get_pool_stats()
+    print(stats)  # {'total_pages': 5, 'busy_pages': 0, 'max_pages': 5}
+```
+
+### Browser Automation in Sessions
+
+```python
+with DynamicSession() as session:
+    # Login automation
+    def login_automation(page):
+        page.fill('input[name="username"]', 'myuser')
+        page.fill('input[name="password"]', 'mypass')
+        page.click('button[type="submit"]')
+        page.wait_for_selector('.dashboard')
+    
+    # Perform login
+    response = session.fetch(
+        'https://example.com/login',
+        page_action=login_automation
+    )
+    
+    # Now logged in, subsequent requests maintain session
+    dashboard = session.fetch('https://example.com/dashboard')
+    profile = session.fetch('https://example.com/profile')
+```
+
+### StealthySession
+
+Stealth browser session with anti-detection:
+
+```python
+from scrapling.fetchers import StealthySession
+
+with StealthySession(
+    headless=True,
+    solve_cloudflare=True,      # Auto-solve Cloudflare
+    hide_canvas=True,           # Canvas fingerprint randomization
+    block_webrtc=True,          # Prevent WebRTC leak
+    allow_webgl=True            # Keep WebGL (recommended)
+) as session:
+    # Solve Cloudflare on first request
+    response1 = session.fetch('https://protected-site.com')
+    
+    # Cloudflare solved, subsequent requests pass through
+    response2 = session.fetch('https://protected-site.com/page2')
+    response3 = session.fetch('https://protected-site.com/page3')
+```
+
+### Async Browser Sessions
+
+Asynchronous browser automation:
+
+```python
+from scrapling.fetchers import AsyncDynamicSession
+import asyncio
+
+async def scrape():
+    async with AsyncDynamicSession() as session:
+        # Concurrent requests in same browser context
+        response1 = await session.fetch('https://example.com/page1')
+        response2 = await session.fetch('https://example.com/page2')
+        
+        return response1, response2
+
+responses = asyncio.run(scrape())
+```
+
+## Proxy Rotation with Sessions
+
+Automatic proxy rotation on request failures:
+
+```python
+from scrapling.fetchers import FetcherSession, ProxyRotator
+
+# Create proxy rotator
+rotator = ProxyRotator([
+    'http://proxy1.com:8080',
+    'http://proxy2.com:8080',
+    'http://user:pass@proxy3.com:8080',
+    {'server': 'http://proxy4.com:8080', 'username': 'user', 'password': 'pass'}
+])
+
+# Use with HTTP session
+with FetcherSession(proxy_rotator=rotator, retries=3) as session:
+    # Automatically rotates proxy on failure
+    response = session.get('https://httpbin.org/ip')
+    print(response.json())  # Shows proxy IP
+```
+
+### Proxy Rotation with Browser Sessions
+
+```python
+from scrapling.fetchers import DynamicSession, ProxyRotator
+
+rotator = ProxyRotator([
+    'http://proxy1.com:8080',
+    'http://proxy2.com:8080'
+])
+
+with DynamicSession(proxy_rotator=rotator) as session:
+    # Each request may use different proxy on failure
+    for i in range(10):
+        response = session.fetch(f'https://httpbin.org/ip')
+        print(f"Request {i}: {response.status}")
+```
+
+## Session Comparison
+
+<CardGroup cols={3}>
+  <Card title="FetcherSession">
+    **Best for:**
+    - Static sites
+    - APIs
+    - Fast scraping
+    - High volume
+    
+    **Speed:** Very Fast
+    
+    **Overhead:** Minimal
+  </Card>
+  <Card title="DynamicSession">
+    **Best for:**
+    - JavaScript sites
+    - SPAs
+    - Automation
+    - Complex interactions
+    
+    **Speed:** Medium
+    
+    **Overhead:** Browser process
+  </Card>
+  <Card title="StealthySession">
+    **Best for:**
+    - Bot detection
+    - Cloudflare
+    - Protected sites
+    - Production scraping
+    
+    **Speed:** Medium-Slow
+    
+    **Overhead:** Browser + stealth
+  </Card>
+</CardGroup>
+
+## Advanced Patterns
+
+### Login and Scrape Pattern
+
+```python
+from scrapling.fetchers import FetcherSession
+
+def scrape_authenticated(username, password):
+    with FetcherSession() as session:
+        # 1. Login
+        login_response = session.post(
+            'https://example.com/login',
+            data={'username': username, 'password': password}
+        )
+        
+        if login_response.status != 200:
+            raise Exception('Login failed')
+        
+        # 2. Scrape authenticated pages
+        results = []
+        for page in range(1, 11):
+            response = session.get(f'https://example.com/data?page={page}')
+            items = response.css('.item::text').getall()
+            results.extend(items)
+        
+        # 3. Logout
+        session.get('https://example.com/logout')
+        
+        return results
+```
+
+### Multi-Step Browser Workflow
+
+```python
+from scrapling.fetchers import DynamicSession
+
+with DynamicSession() as session:
+    # Step 1: Login
+    def login(page):
+        page.fill('#username', 'user')
+        page.fill('#password', 'pass')
+        page.click('#submit')
+        page.wait_for_selector('.dashboard')
+    
+    response = session.fetch(
+        'https://example.com/login',
+        page_action=login
+    )
+    
+    # Step 2: Navigate to search
+    def search(page):
+        page.fill('input[name="q"]', 'search term')
+        page.click('button[type="submit"]')
+        page.wait_for_selector('.results')
+    
+    response = session.fetch(
+        'https://example.com/search',
+        page_action=search
+    )
+    
+    # Step 3: Extract results
+    results = response.css('.result')
+    for result in results:
+        title = result.css('h3::text').get()
+        print(title)
+```
+
+### Session Retry Logic
+
+```python
+from scrapling.fetchers import FetcherSession
+import time
+
+with FetcherSession(retries=5, retry_delay=2) as session:
+    # Automatic retries with exponential backoff
+    urls = ['https://example.com/page1', 'https://example.com/page2']
+    
+    for url in urls:
+        try:
+            response = session.get(url)
+            print(f"Success: {url}")
+        except Exception as e:
+            print(f"Failed after retries: {url} - {e}")
+```
+
+## Session State Management
+
+### Saving Browser State
+
+```python
+from scrapling.fetchers import DynamicSession
+
+# Use persistent profile directory
+with DynamicSession(
+    user_data_dir='/path/to/browser/profile'
+) as session:
+    # First run: login and save state
+    def login(page):
+        page.fill('#username', 'user')
+        page.fill('#password', 'pass')
+        page.click('#submit')
+    
+    session.fetch('https://example.com/login', page_action=login)
+    # Cookies and localStorage saved to profile
+
+# Second run: reuse saved state
+with DynamicSession(
+    user_data_dir='/path/to/browser/profile'
+) as session:
+    # Already logged in from previous session!
+    response = session.fetch('https://example.com/dashboard')
+```
+
+### Sharing Configuration
+
+```python
+from scrapling.fetchers import FetcherSession
+
+# Define configuration
+config = {
+    'impersonate': 'chrome',
+    'headers': {'X-API-Key': 'secret'},
+    'timeout': 30,
+    'retries': 3
+}
+
+# Use same config across multiple sessions
+with FetcherSession(**config) as session1:
+    response1 = session1.get('https://api1.example.com/data')
+
+with FetcherSession(**config) as session2:
+    response2 = session2.get('https://api2.example.com/data')
+```
+
+## Error Handling
+
+```python
+from scrapling.fetchers import FetcherSession
+
+with FetcherSession() as session:
+    try:
+        response = session.get('https://example.com')
+        
+        if response.status != 200:
+            print(f"HTTP Error: {response.status} {response.reason}")
+        
+    except ConnectionError as e:
+        print(f"Connection failed: {e}")
+    except TimeoutError as e:
+        print(f"Request timeout: {e}")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+```
+
+## Best Practices
+
+### Always Use Context Managers
+
+```python
+# Good: Automatically closes resources
+with FetcherSession() as session:
+    response = session.get('https://example.com')
+
+# Bad: Manual cleanup required
+session = FetcherSession()
+session.__enter__()
+try:
+    response = session.get('https://example.com')
+finally:
+    session.__exit__(None, None, None)
+```
+
+### Reuse Sessions
+
+```python
+# Good: One session for multiple requests
+with FetcherSession() as session:
+    for url in urls:
+        response = session.get(url)
+
+# Bad: New session for each request
+for url in urls:
+    with FetcherSession() as session:
+        response = session.get(url)
+```
+
+### Configure Once
+
+```python
+# Good: Set defaults in session
+with FetcherSession(
+    headers={'Authorization': 'Bearer token'},
+    timeout=30
+) as session:
+    response1 = session.get('https://api.example.com/endpoint1')
+    response2 = session.get('https://api.example.com/endpoint2')
+
+# Bad: Repeat config for each request
+with FetcherSession() as session:
+    response1 = session.get(
+        'https://api.example.com/endpoint1',
+        headers={'Authorization': 'Bearer token'},
+        timeout=30
+    )
+    response2 = session.get(
+        'https://api.example.com/endpoint2',
+        headers={'Authorization': 'Bearer token'},
+        timeout=30
+    )
+```
+
+## Implementation Details
+
+### FetcherSession Internals
+
+```python
+# From scrapling/engines/static.py
+class _SyncSessionLogic:
+    def __enter__(self):
+        """Creates and returns a new synchronous Fetcher Session"""
+        if self._is_alive:
+            raise RuntimeError("Session already active")
+        
+        self._curl_session = CurlSession()
+        self._is_alive = True
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Closes the active session"""
+        if self._curl_session:
+            self._curl_session.close()
+            self._curl_session = None
+        self._is_alive = False
+```
+
+### Browser Session Internals
+
+```python
+# From scrapling/engines/_browsers/_base.py
+class SyncSession:
+    def start(self):
+        """Initialize browser and context"""
+        self.playwright = sync_playwright().start()
+        self.browser = self.playwright.chromium.launch(**options)
+        self.context = self.browser.new_context(**context_options)
+        self._is_alive = True
+    
+    def close(self):
+        """Close all resources"""
+        if self.context:
+            self.context.close()
+        if self.browser:
+            self.browser.close()
+        if self.playwright:
+            self.playwright.stop()
+        self._is_alive = False
+```
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Fetchers" href="/concepts/fetchers">
+    Learn about fetcher types
+  </Card>
+  <Card title="Parsing" href="/concepts/parsing">
+    Extract data from responses
+  </Card>
+  <Card title="Examples" href="/tutorials/real-world-examples">
+    Real-world session examples
+  </Card>
+</CardGroup>

@@ -1,0 +1,660 @@
+---
+title: 'Migrating from Scrapy'
+description: 'Complete guide to migrating your Scrapy spiders to Scrapling'
+---
+
+If you're coming from Scrapy, you'll feel right at home with Scrapling's spider system. The API is intentionally familiar, but Scrapling brings modern Python async/await patterns, simplified session management, and built-in pause/resume capabilities. This guide will help you migrate your existing Scrapy spiders to Scrapling.
+
+## Core Concepts Comparison
+
+| Scrapy Concept | Scrapling Equivalent | Notes |
+|----------------|---------------------|--------|
+| `scrapy.Spider` | `scrapling.spiders.Spider` | Similar base class with `name`, `start_urls` |
+| `scrapy.Request` | `scrapling.spiders.Request` | Similar API, but simpler |
+| `scrapy.Response` | `scrapling.engines.Response` | Extends `Selector` with additional methods |
+| `parse()` method | `parse()` method | Must be async generator in Scrapling |
+| `yield Request` | `yield Request` | Same pattern |
+| `yield item` | `yield dict` | Just yield dictionaries |
+| Item classes | Python dicts | No need for Item classes |
+| Item Pipelines | `on_scraped_item()` hook | Simpler approach |
+| Middlewares | Session configuration | Different architecture |
+| `scrapy crawl` | `spider.start()` | Programmatic approach |
+| Settings | Class attributes | Direct configuration |
+
+## Spider Structure Comparison
+
+### Basic Spider
+
+<CodeGroup>
+```python Scrapy
+import scrapy
+
+class QuotesSpider(scrapy.Spider):
+    name = "quotes"
+    start_urls = ['https://quotes.toscrape.com']
+    
+    def parse(self, response):
+        for quote in response.css('div.quote'):
+            yield {
+                'text': quote.css('span.text::text').get(),
+                'author': quote.css('small.author::text').get(),
+            }
+        
+        next_page = response.css('li.next a::attr(href)').get()
+        if next_page:
+            yield response.follow(next_page, self.parse)
+```
+
+```python Scrapling
+from scrapling.spiders import Spider, Response
+
+class QuotesSpider(Spider):
+    name = "quotes"
+    start_urls = ['https://quotes.toscrape.com']
+    
+    async def parse(self, response: Response):
+        for quote in response.css('div.quote'):
+            yield {
+                'text': quote.css('span.text::text').get(),
+                'author': quote.css('small.author::text').get(),
+            }
+        
+        next_page = response.css('li.next a::attr(href)').get()
+        if next_page:
+            yield response.follow(next_page, callback=self.parse)
+```
+</CodeGroup>
+
+**Key differences:**
+1. `parse()` must be an `async` generator in Scrapling
+2. Type hint `Response` for better IDE support
+3. Must specify `callback=self.parse` explicitly in follow requests
+
+### Running the Spider
+
+<CodeGroup>
+```python Scrapy
+# Command line
+scrapy crawl quotes
+
+# Or programmatically
+from scrapy.crawler import CrawlerProcess
+
+process = CrawlerProcess()
+process.crawl(QuotesSpider)
+process.start()
+```
+
+```python Scrapling
+# Programmatic only
+result = QuotesSpider().start()
+
+# Access results
+print(f"Scraped {len(result.items)} items")
+for item in result.items:
+    print(item)
+
+# Export results
+result.items.to_json("quotes.json")
+result.items.to_jsonl("quotes.jsonl")
+```
+</CodeGroup>
+
+## Advanced Features Comparison
+
+### Multiple Callbacks
+
+<CodeGroup>
+```python Scrapy
+import scrapy
+
+class ProductSpider(scrapy.Spider):
+    name = "products"
+    start_urls = ['https://example.com/products']
+    
+    def parse(self, response):
+        for product_url in response.css('a.product::attr(href)').getall():
+            yield response.follow(product_url, callback=self.parse_product)
+    
+    def parse_product(self, response):
+        yield {
+            'name': response.css('h1::text').get(),
+            'price': response.css('.price::text').get(),
+        }
+```
+
+```python Scrapling
+from scrapling.spiders import Spider, Response
+
+class ProductSpider(Spider):
+    name = "products"
+    start_urls = ['https://example.com/products']
+    
+    async def parse(self, response: Response):
+        for product_url in response.css('a.product::attr(href)').getall():
+            yield response.follow(product_url, callback=self.parse_product)
+    
+    async def parse_product(self, response: Response):
+        yield {
+            'name': response.css('h1::text').get(),
+            'price': response.css('.price::text').get(),
+        }
+```
+</CodeGroup>
+
+### Request Metadata
+
+<CodeGroup>
+```python Scrapy
+import scrapy
+
+class MySpider(scrapy.Spider):
+    name = "metadata"
+    start_urls = ['https://example.com']
+    
+    def parse(self, response):
+        for url in response.css('a::attr(href)').getall():
+            yield scrapy.Request(
+                url,
+                callback=self.parse_page,
+                meta={'category': 'electronics'}
+            )
+    
+    def parse_page(self, response):
+        yield {
+            'url': response.url,
+            'category': response.meta['category'],
+            'title': response.css('h1::text').get(),
+        }
+```
+
+```python Scrapling
+from scrapling.spiders import Spider, Request, Response
+
+class MySpider(Spider):
+    name = "metadata"
+    start_urls = ['https://example.com']
+    
+    async def parse(self, response: Response):
+        for url in response.css('a::attr(href)').getall():
+            yield Request(
+                url,
+                callback=self.parse_page,
+                meta={'category': 'electronics'}
+            )
+    
+    async def parse_page(self, response: Response):
+        yield {
+            'url': response.url,
+            'category': response.request.meta['category'],
+            'title': response.css('h1::text').get(),
+        }
+```
+</CodeGroup>
+
+### Concurrency Control
+
+<CodeGroup>
+```python Scrapy
+# In settings.py
+CONCURRENT_REQUESTS = 16
+CONCURRENT_REQUESTS_PER_DOMAIN = 8
+DOWNLOAD_DELAY = 0.5
+
+# Or in spider
+class MySpider(scrapy.Spider):
+    name = "my_spider"
+    custom_settings = {
+        'CONCURRENT_REQUESTS': 16,
+        'CONCURRENT_REQUESTS_PER_DOMAIN': 8,
+        'DOWNLOAD_DELAY': 0.5,
+    }
+```
+
+```python Scrapling
+from scrapling.spiders import Spider
+
+class MySpider(Spider):
+    name = "my_spider"
+    start_urls = ['https://example.com']
+    
+    # Configure as class attributes
+    concurrent_requests = 16
+    concurrent_requests_per_domain = 8
+    download_delay = 0.5
+    
+    async def parse(self, response):
+        yield {"url": response.url}
+```
+</CodeGroup>
+
+### Allowed Domains
+
+<CodeGroup>
+```python Scrapy
+import scrapy
+
+class MySpider(scrapy.Spider):
+    name = "my_spider"
+    allowed_domains = ['example.com']
+    start_urls = ['https://example.com']
+    
+    def parse(self, response):
+        # Links to other domains are automatically filtered
+        for link in response.css('a::attr(href)').getall():
+            yield response.follow(link)
+```
+
+```python Scrapling
+from scrapling.spiders import Spider
+
+class MySpider(Spider):
+    name = "my_spider"
+    allowed_domains = {'example.com'}  # Set instead of list
+    start_urls = ['https://example.com']
+    
+    async def parse(self, response):
+        # Links to other domains are automatically filtered
+        for link in response.css('a::attr(href)').getall():
+            yield response.follow(link, callback=self.parse)
+```
+</CodeGroup>
+
+## Item Processing
+
+### Item Pipelines vs Hooks
+
+<CodeGroup>
+```python Scrapy
+# pipelines.py
+class MyPipeline:
+    def process_item(self, item, spider):
+        # Clean price
+        if 'price' in item:
+            item['price'] = float(item['price'].replace('$', ''))
+        return item
+
+# settings.py
+ITEM_PIPELINES = {
+    'myproject.pipelines.MyPipeline': 300,
+}
+```
+
+```python Scrapling
+from scrapling.spiders import Spider, Response
+
+class MySpider(Spider):
+    name = "my_spider"
+    start_urls = ['https://example.com']
+    
+    async def on_scraped_item(self, item):
+        # Clean price
+        if 'price' in item:
+            item['price'] = float(item['price'].replace('$', ''))
+        return item  # Or return None to drop the item
+    
+    async def parse(self, response: Response):
+        yield {'price': '$19.99'}
+```
+</CodeGroup>
+
+## Session Management (Middlewares Alternative)
+
+### Using Different Session Types
+
+Scrapy uses middlewares for request/response processing. Scrapling uses a session-based architecture:
+
+<CodeGroup>
+```python Scrapy
+# Scrapy requires middleware for browser automation
+# Usually requires additional libraries like scrapy-playwright
+
+import scrapy
+from scrapy_playwright.page import PageMethod
+
+class MySpider(scrapy.Spider):
+    name = "browser_spider"
+    
+    def start_requests(self):
+        yield scrapy.Request(
+            "https://example.com",
+            meta=dict(
+                playwright=True,
+                playwright_page_methods=[
+                    PageMethod("wait_for_selector", "div.content"),
+                ],
+            ),
+        )
+```
+
+```python Scrapling
+from scrapling.spiders import Spider, Request, Response
+from scrapling.fetchers import FetcherSession, AsyncStealthySession
+
+class MySpider(Spider):
+    name = "browser_spider"
+    start_urls = ['https://example.com']
+    
+    def configure_sessions(self, manager):
+        # Simple HTTP requests
+        manager.add("fast", FetcherSession(impersonate="chrome"))
+        # Browser automation with stealth
+        manager.add("browser", AsyncStealthySession(headless=True), lazy=True)
+    
+    async def parse(self, response: Response):
+        # Use different sessions for different requests
+        for link in response.css('a::attr(href)').getall():
+            if "protected" in link:
+                yield Request(link, sid="browser", callback=self.parse)
+            else:
+                yield Request(link, sid="fast", callback=self.parse)
+```
+</CodeGroup>
+
+## Proxy Configuration
+
+<CodeGroup>
+```python Scrapy
+# settings.py
+HTTPS_PROXY = 'http://proxy.example.com:8000'
+
+# Or in spider with middleware
+class MySpider(scrapy.Spider):
+    name = "proxy_spider"
+    
+    def start_requests(self):
+        for url in self.start_urls:
+            yield scrapy.Request(
+                url,
+                meta={'proxy': 'http://proxy.example.com:8000'}
+            )
+```
+
+```python Scrapling
+from scrapling.spiders import Spider, Request
+from scrapling.fetchers import FetcherSession
+from scrapling.engines.toolbelt import ProxyRotator
+
+class MySpider(Spider):
+    name = "proxy_spider"
+    start_urls = ['https://example.com']
+    
+    def configure_sessions(self, manager):
+        # Automatic proxy rotation
+        proxies = ['http://proxy1:8000', 'http://proxy2:8000']
+        rotator = ProxyRotator(proxies, mode='cycle')
+        manager.add("default", FetcherSession(proxy=rotator))
+    
+    async def parse(self, response):
+        # Or override proxy per request
+        yield Request(
+            'https://example.com/page',
+            extra_args={'proxy': 'http://specific-proxy:8000'}
+        )
+```
+</CodeGroup>
+
+## Pause & Resume
+
+Scrapy requires jobs directory configuration and command-line management. Scrapling makes it simple:
+
+<CodeGroup>
+```python Scrapy
+# settings.py
+JOBDIR = "crawls/myspider"
+
+# Command line
+scrapy crawl myspider
+# Press Ctrl+C to pause
+# Run again to resume:
+scrapy crawl myspider
+```
+
+```python Scrapling
+from scrapling.spiders import Spider
+
+class MySpider(Spider):
+    name = "my_spider"
+    start_urls = ['https://example.com']
+    
+    async def parse(self, response):
+        yield {"url": response.url}
+
+# Run with checkpoint support
+result = MySpider(crawldir="./crawl_data").start()
+# Press Ctrl+C for graceful pause
+# Run again to resume from where it stopped
+```
+</CodeGroup>
+
+## Lifecycle Hooks
+
+<CodeGroup>
+```python Scrapy
+import scrapy
+
+class MySpider(scrapy.Spider):
+    name = "lifecycle"
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Setup code
+    
+    def spider_opened(self, spider):
+        self.logger.info('Spider opened')
+    
+    def spider_closed(self, spider, reason):
+        self.logger.info(f'Spider closed: {reason}')
+```
+
+```python Scrapling
+from scrapling.spiders import Spider
+
+class MySpider(Spider):
+    name = "lifecycle"
+    start_urls = ['https://example.com']
+    
+    async def on_start(self, resuming: bool = False):
+        # Called before crawl starts
+        if resuming:
+            self.logger.info('Resuming from checkpoint')
+        else:
+            self.logger.info('Starting fresh crawl')
+    
+    async def on_close(self):
+        # Called after crawl finishes
+        self.logger.info('Spider finished')
+    
+    async def on_error(self, request, error):
+        # Called when a request fails
+        self.logger.error(f'Request failed: {error}')
+    
+    async def parse(self, response):
+        yield {"url": response.url}
+```
+</CodeGroup>
+
+## Logging
+
+<CodeGroup>
+```python Scrapy
+# settings.py
+LOG_LEVEL = 'INFO'
+LOG_FILE = 'spider.log'
+
+import scrapy
+
+class MySpider(scrapy.Spider):
+    name = "logging"
+    
+    def parse(self, response):
+        self.logger.info('Processing page')
+        self.logger.debug('Debug info')
+        self.logger.warning('Warning message')
+```
+
+```python Scrapling
+import logging
+from scrapling.spiders import Spider
+
+class MySpider(Spider):
+    name = "logging"
+    start_urls = ['https://example.com']
+    
+    # Configure logging as class attributes
+    logging_level = logging.INFO
+    log_file = 'spider.log'
+    
+    async def parse(self, response):
+        self.logger.info('Processing page')
+        self.logger.debug('Debug info')
+        self.logger.warning('Warning message')
+```
+</CodeGroup>
+
+## Selector Syntax
+
+Good news! Scrapling uses the same selector syntax as Scrapy:
+
+<CodeGroup>
+```python Scrapy
+# Both work identically
+response.css('div.quote span.text::text').get()
+response.css('div.quote span.text::text').getall()
+response.xpath('//div[@class="quote"]//span[@class="text"]/text()').get()
+
+# Chaining
+response.css('div.quote').css('span.text::text').getall()
+```
+
+```python Scrapling
+# Same syntax!
+response.css('div.quote span.text::text').get()
+response.css('div.quote span.text::text').getall()
+response.xpath('//div[@class="quote"]//span[@class="text"]/text()').get()
+
+# Chaining
+response.css('div.quote').css('span.text::text').getall()
+```
+</CodeGroup>
+
+## Streaming Results
+
+Scrapy doesn't have built-in streaming. Scrapling does:
+
+```python Scrapling Only
+import asyncio
+from scrapling.spiders import Spider, Response
+
+class MySpider(Spider):
+    name = "streaming"
+    start_urls = ['https://example.com']
+    
+    async def parse(self, response: Response):
+        for item in response.css('.item'):
+            yield {'title': item.css('h2::text').get()}
+
+async def main():
+    spider = MySpider()
+    async for item in spider.stream():
+        # Process items as they arrive
+        print(f"Got item: {item}")
+        # Check stats during crawl
+        print(f"Progress: {spider.stats.items_scraped} items")
+
+asyncio.run(main())
+```
+
+## Complete Migration Example
+
+Here's a complete Scrapy spider migrated to Scrapling:
+
+<CodeGroup>
+```python Scrapy
+import scrapy
+from scrapy.loader import ItemLoader
+from itemloaders.processors import TakeFirst, MapCompose
+
+class Product(scrapy.Item):
+    name = scrapy.Field()
+    price = scrapy.Field()
+    url = scrapy.Field()
+
+class ProductSpider(scrapy.Spider):
+    name = 'products'
+    allowed_domains = ['example.com']
+    start_urls = ['https://example.com/products']
+    
+    custom_settings = {
+        'CONCURRENT_REQUESTS': 8,
+        'DOWNLOAD_DELAY': 1,
+    }
+    
+    def parse(self, response):
+        for product in response.css('div.product'):
+            loader = ItemLoader(item=Product(), selector=product)
+            loader.add_css('name', 'h2::text')
+            loader.add_css('price', 'span.price::text')
+            loader.add_value('url', response.url)
+            yield loader.load_item()
+        
+        next_page = response.css('a.next::attr(href)').get()
+        if next_page:
+            yield response.follow(next_page, self.parse)
+```
+
+```python Scrapling
+from scrapling.spiders import Spider, Response
+
+class ProductSpider(Spider):
+    name = 'products'
+    allowed_domains = {'example.com'}
+    start_urls = ['https://example.com/products']
+    
+    concurrent_requests = 8
+    download_delay = 1
+    
+    async def parse(self, response: Response):
+        for product in response.css('div.product'):
+            yield {
+                'name': product.css('h2::text').get(),
+                'price': product.css('span.price::text').get(),
+                'url': response.url,
+            }
+        
+        next_page = response.css('a.next::attr(href)').get()
+        if next_page:
+            yield response.follow(next_page, callback=self.parse)
+
+# Run and export
+result = ProductSpider().start()
+result.items.to_json('products.json', indent=True)
+```
+</CodeGroup>
+
+## Key Advantages of Scrapling
+
+1. **Modern Async/Await**: Native async/await instead of Twisted deferreds
+2. **Simpler Architecture**: No need for separate settings.py, items.py, pipelines.py
+3. **Built-in Sessions**: Multiple fetcher types (HTTP, browser, stealth) in one spider
+4. **Easy Pause/Resume**: Just pass `crawldir` parameter
+5. **Real-time Streaming**: Stream items as they're scraped with `spider.stream()`
+6. **Better Performance**: Optimized parsing that's faster than Scrapy's Parsel
+7. **Type Hints**: Full type coverage for better IDE support
+8. **Simpler API**: Less boilerplate, more Pythonic
+
+## What Scrapling Doesn't Have
+
+- No built-in commands system (like `scrapy genspider`)
+- No extensions system (use Python decorators/inheritance)
+- No contracts for testing (use standard Python testing)
+- Simpler than Scrapy's full framework approach
+
+## Next Steps
+
+- [Build your first spider](/tutorials/building-first-spider)
+- [Learn about sessions](/spiders/sessions)
+- [Explore proxy rotation](/fetching/proxy-rotation)
+- [Check out real-world examples](/tutorials/real-world-examples)
+
+Scrapling gives you the power of Scrapy with a modern, simpler API. Happy scraping!

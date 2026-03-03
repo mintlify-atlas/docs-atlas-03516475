@@ -1,0 +1,409 @@
+---
+title: 'DOM Navigation'
+description: 'Navigate the HTML tree structure using parent, children, and sibling relationships'
+---
+
+## Overview
+
+Scrapling provides intuitive methods to traverse the DOM tree. You can move up to parent elements, down to children, sideways to siblings, or iterate through ancestors.
+
+## Parent Elements
+
+### parent
+
+Access the direct parent of an element.
+
+```python
+@property
+def parent() -> Optional[Selector]
+```
+
+Returns the direct parent element or `None` if the element has no parent.
+
+```python
+from scrapling import Fetcher
+
+page = Fetcher.fetch('https://example.com')
+
+# Get parent of an element
+link = page.css('a.download').first
+if link.parent:
+    print(f"Parent tag: {link.parent.tag}")
+    print(f"Parent classes: {link.parent.attrib.get('class')}")
+```
+
+### iterancestors()
+
+Iterate through all ancestor elements from parent to root.
+
+```python
+def iterancestors() -> Generator[Selector, None, None]
+```
+
+Returns a generator that loops over all ancestors of the element, starting with the element's parent.
+
+```python
+# Print all ancestor tags
+element = page.css('.nested-item').first
+
+for ancestor in element.iterancestors():
+    print(f"Ancestor: {ancestor.tag}")
+```
+
+### find_ancestor()
+
+Find the first ancestor that matches a condition.
+
+```python
+def find_ancestor(func: Callable[[Selector], bool]) -> Optional[Selector]
+```
+
+<ParamField path="func" type="Callable[[Selector], bool]" required>
+  A function that takes each ancestor as an argument and returns True/False
+</ParamField>
+
+Returns the first ancestor that matches the function or `None` otherwise.
+
+<CodeGroup>
+```python Find by Tag
+# Find first ancestor with specific tag
+container = element.find_ancestor(lambda e: e.tag == 'div')
+```
+
+```python Find by Class
+# Find first ancestor with a class
+section = element.find_ancestor(lambda e: e.has_class('section'))
+```
+
+```python Find by Attribute
+# Find first ancestor with data attribute
+data_parent = element.find_ancestor(
+    lambda e: 'data-id' in e.attrib
+)
+```
+</CodeGroup>
+
+### path
+
+Get the full path from root to the current element.
+
+```python
+@property
+def path() -> Selectors
+```
+
+Returns a list of type `Selectors` that contains the path leading to the current element from the root.
+
+```python
+# Get element path
+element = page.css('.deep-nested-item').first
+path = element.path
+
+# Print path
+for i, ancestor in enumerate(path):
+    print(f"Level {i}: {ancestor.tag}")
+```
+
+## Children Elements
+
+### children
+
+Get all direct children of an element.
+
+```python
+@property
+def children() -> Selectors
+```
+
+Returns the direct children elements of the current element or an empty list otherwise.
+
+<CodeGroup>
+```python Basic Usage
+# Get all children
+container = page.css('.container').first
+children = container.children
+
+print(f"Number of children: {len(children)}")
+for child in children:
+    print(f"Child tag: {child.tag}")
+```
+
+```python Filter Children
+# Filter children by condition
+container = page.css('ul').first
+list_items = container.children.filter(lambda e: e.tag == 'li')
+```
+
+```python Access First/Last Child
+# Get first and last child
+first_child = container.children.first
+last_child = container.children.last
+```
+</CodeGroup>
+
+### below_elements
+
+Get all descendants (not just direct children) under the current element.
+
+```python
+@property
+def below_elements() -> Selectors
+```
+
+Returns all elements under the current element in the DOM tree.
+
+```python
+# Get all elements under a container
+section = page.css('section.content').first
+all_descendants = section.below_elements
+
+print(f"Total descendants: {len(all_descendants)}")
+
+# Find all links in descendants
+links = all_descendants.filter(lambda e: e.tag == 'a')
+```
+
+## Sibling Elements
+
+### siblings
+
+Get all sibling elements (other children of the same parent).
+
+```python
+@property
+def siblings() -> Selectors
+```
+
+Returns other children of the current element's parent or an empty list otherwise.
+
+```python
+# Get all siblings
+element = page.css('.active-item').first
+siblings = element.siblings
+
+for sibling in siblings:
+    print(f"Sibling: {sibling.tag} - {sibling.attrib.get('class')}")
+```
+
+### next
+
+Get the next sibling element.
+
+```python
+@property
+def next() -> Optional[Selector]
+```
+
+Returns the next element after the current element in the parent's children, or `None` otherwise.
+
+<CodeGroup>
+```python Navigate Forward
+# Get next sibling
+current = page.css('.item.active').first
+next_item = current.next
+
+if next_item:
+    print(f"Next item: {next_item.text}")
+```
+
+```python Chain Navigation
+# Navigate through multiple siblings
+first_item = page.css('.item').first
+second_item = first_item.next
+third_item = second_item.next if second_item else None
+```
+
+```python Loop Through Siblings
+# Iterate through next siblings
+current = page.css('.start-item').first
+while current:
+    print(current.text)
+    current = current.next
+```
+</CodeGroup>
+
+### previous
+
+Get the previous sibling element.
+
+```python
+@property
+def previous() -> Optional[Selector]
+```
+
+Returns the previous element before the current element in the parent's children, or `None` otherwise.
+
+<CodeGroup>
+```python Navigate Backward
+# Get previous sibling
+current = page.css('.item.active').first
+prev_item = current.previous
+
+if prev_item:
+    print(f"Previous item: {prev_item.text}")
+```
+
+```python Reverse Iteration
+# Iterate backwards through siblings
+current = page.css('.last-item').first
+while current:
+    print(current.text)
+    current = current.previous
+```
+</CodeGroup>
+
+## Practical Examples
+
+### Breadcrumb Navigation
+
+Extract breadcrumb information using parent navigation:
+
+```python
+# Get breadcrumb path
+current_page = page.css('.breadcrumb .active').first
+breadcrumbs = []
+
+# Walk up the tree
+for ancestor in current_page.iterancestors():
+    if ancestor.has_class('breadcrumb-item'):
+        breadcrumbs.insert(0, ancestor.text.strip())
+
+print(' > '.join(breadcrumbs))
+```
+
+### Table Row Navigation
+
+Navigate through table rows and cells:
+
+```python
+# Find a specific cell and navigate to other cells in the same row
+price_cell = page.find_by_text('$99.99', first_match=True)
+
+if price_cell:
+    # Get the row
+    row = price_cell.find_ancestor(lambda e: e.tag == 'tr')
+    
+    if row:
+        # Get all cells in the row
+        cells = row.css('td')
+        product_name = cells[0].text
+        product_price = cells[1].text
+        product_stock = cells[2].text
+        
+        print(f"{product_name}: {product_price} ({product_stock})")
+```
+
+### Menu Navigation
+
+Navigate through nested menu structures:
+
+```python
+# Find active menu item and get its siblings
+active_item = page.css('.menu-item.active').first
+
+if active_item:
+    # Get parent menu
+    parent_menu = active_item.parent
+    
+    # Get all menu items at this level
+    menu_items = active_item.siblings
+    
+    # Include the active item too
+    all_items = [active_item] + list(menu_items)
+    
+    for item in all_items:
+        link = item.css('a').first
+        if link:
+            print(f"{link.text}: {link.attrib.get('href')}")
+```
+
+### List Navigation
+
+Process list items with context:
+
+```python
+# Process list items with previous/next context
+list_items = page.css('ul.timeline li')
+
+for item in list_items:
+    current_text = item.text.strip()
+    
+    # Get previous item for context
+    if item.previous:
+        prev_text = item.previous.text.strip()
+        print(f"After '{prev_text}': {current_text}")
+    else:
+        print(f"First: {current_text}")
+    
+    # Check if there's a next item
+    if not item.next:
+        print("(This is the last item)")
+```
+
+### Finding Related Content
+
+Use navigation to find related elements:
+
+```python
+# Find a heading and get the content until the next heading
+heading = page.find_by_text('Description', first_match=True)
+
+if heading:
+    content_parts = []
+    current = heading.next
+    
+    # Collect content until next heading
+    while current and current.tag not in ['h1', 'h2', 'h3', 'h4']:
+        content_parts.append(current.text.strip())
+        current = current.next
+    
+    description = ' '.join(content_parts)
+    print(description)
+```
+
+## Navigation Helpers
+
+### Check Element Position
+
+```python
+def is_first_child(element):
+    return element.previous is None
+
+def is_last_child(element):
+    return element.next is None
+
+def get_position(element):
+    """Get 0-based position among siblings"""
+    position = 0
+    current = element.previous
+    while current:
+        position += 1
+        current = current.previous
+    return position
+
+# Usage
+item = page.css('.item').first
+if is_first_child(item):
+    print("This is the first item")
+print(f"Position: {get_position(item)}")
+```
+
+### Find Common Ancestor
+
+```python
+def find_common_ancestor(element1, element2):
+    """Find the closest common ancestor of two elements"""
+    ancestors1 = set(element1.iterancestors())
+    
+    for ancestor in element2.iterancestors():
+        if ancestor in ancestors1:
+            return ancestor
+    return None
+
+# Usage
+elem1 = page.css('.item-1').first
+elem2 = page.css('.item-2').first
+common = find_common_ancestor(elem1, elem2)
+if common:
+    print(f"Common ancestor: {common.tag}")
+```

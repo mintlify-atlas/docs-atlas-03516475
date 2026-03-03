@@ -1,0 +1,253 @@
+---
+title: Installation
+description: Install Scrapling and its optional dependencies for fetchers, AI features, and CLI tools
+---
+
+## Requirements
+
+Scrapling requires **Python 3.10 or higher**.
+
+## Basic Installation
+
+Install the core Scrapling library (parser engine only):
+
+```bash
+pip install scrapling
+```
+
+<Note>
+  This installation includes only the parser engine and its dependencies, without any fetchers or command-line features.
+</Note>
+
+## Optional Dependencies
+
+Scrapling offers several optional dependency groups depending on your needs:
+
+### Fetchers
+
+Install fetcher dependencies for HTTP requests, browser automation, and stealth capabilities:
+
+<Steps>
+  <Step title="Install fetcher dependencies">
+    ```bash
+    pip install "scrapling[fetchers]"
+    ```
+    
+    This installs dependencies for:
+    - `Fetcher` & `FetcherSession` (HTTP requests)
+    - `DynamicFetcher` & `DynamicSession` (Playwright browser automation)
+    - `StealthyFetcher` & `StealthySession` (anti-bot bypass)
+  </Step>
+
+  <Step title="Install browsers">
+    After installing fetcher dependencies, download browsers and system dependencies:
+    
+    <CodeGroup>
+    ```bash Terminal
+    scrapling install           # Normal install
+    scrapling install --force   # Force reinstall
+    ```
+    
+    ```python Python
+    from scrapling.cli import install
+    
+    install([], standalone_mode=False)          # Normal install
+    install(["--force"], standalone_mode=False) # Force reinstall
+    ```
+    </CodeGroup>
+    
+    This downloads:
+    - Chromium and Chrome browsers
+    - System dependencies for browser automation
+    - Fingerprint manipulation dependencies
+  </Step>
+</Steps>
+
+<Warning>
+  You must run `scrapling install` after installing `scrapling[fetchers]` to use browser-based fetchers (DynamicFetcher, StealthyFetcher).
+</Warning>
+
+### AI Features
+
+Install the MCP server for AI-assisted web scraping:
+
+```bash
+pip install "scrapling[ai]"
+```
+
+This enables:
+- Built-in MCP server integration
+- AI-powered content extraction
+- Integration with Claude, Cursor, and other AI tools
+
+<Tip>
+  The MCP server features powerful capabilities that leverage Scrapling to extract targeted content before passing it to AI, reducing token usage and costs. See the [MCP Server guide](/ai/mcp-server) for details.
+</Tip>
+
+### Shell Features
+
+Install interactive shell and CLI extraction tools:
+
+```bash
+pip install "scrapling[shell]"
+```
+
+This enables:
+- Interactive Web Scraping shell with IPython
+- `scrapling shell` command
+- `scrapling extract` command for extracting content without code
+
+### All Features
+
+Install everything at once:
+
+```bash
+pip install "scrapling[all]"
+```
+
+<Note>
+  Remember to run `scrapling install` after installing `[all]` to set up browser dependencies if you plan to use fetchers.
+</Note>
+
+## Docker Installation
+
+Scrapling provides pre-built Docker images with all extras and browsers included:
+
+<CodeGroup>
+
+```bash DockerHub
+docker pull pyd4vinci/scrapling
+```
+
+```bash GitHub Registry
+docker pull ghcr.io/d4vinci/scrapling:latest
+```
+
+</CodeGroup>
+
+The Docker image includes:
+- All Scrapling features (`[all]`)
+- All browsers pre-installed
+- System dependencies configured
+- Ready to use out of the box
+
+<Tip>
+  Docker images are automatically built and pushed using GitHub Actions from the repository's main branch.
+</Tip>
+
+### Using the Docker Image
+
+```bash
+# Run interactive Python shell
+docker run -it pyd4vinci/scrapling python
+
+# Run a Python script
+docker run -v $(pwd):/app pyd4vinci/scrapling python /app/your_script.py
+
+# Use the interactive shell
+docker run -it pyd4vinci/scrapling scrapling shell
+```
+
+## Verify Installation
+
+Confirm Scrapling is installed correctly:
+
+<Steps>
+  <Step title="Test core parser">
+    ```python
+    from scrapling.parser import Selector
+    
+    page = Selector("<html><body><h1>Hello Scrapling!</h1></body></html>")
+    print(page.css('h1::text').get())
+    # Output: Hello Scrapling!
+    ```
+  </Step>
+
+  <Step title="Test HTTP fetcher (if installed)">
+    ```python
+    from scrapling.fetchers import Fetcher
+    
+    page = Fetcher.get('https://httpbin.org/html')
+    print(page.status)
+    # Output: 200
+    ```
+  </Step>
+
+  <Step title="Test browser installation (if installed)">
+    ```bash
+    scrapling --version
+    ```
+    
+    Or test in Python:
+    ```python
+    from scrapling.fetchers import DynamicFetcher
+    
+    page = DynamicFetcher.fetch('https://httpbin.org/html', headless=True)
+    print(page.status)
+    # Output: 200
+    ```
+  </Step>
+</Steps>
+
+## Installation Summary
+
+Here's a quick reference for installation commands:
+
+| Use Case | Command |
+|----------|----------|
+| **Parser only** | `pip install scrapling` |
+| **HTTP + Browser fetchers** | `pip install "scrapling[fetchers]"` + `scrapling install` |
+| **AI integration** | `pip install "scrapling[ai]"` |
+| **Interactive shell** | `pip install "scrapling[shell]"` |
+| **Everything** | `pip install "scrapling[all]"` + `scrapling install` |
+| **Docker** | `docker pull pyd4vinci/scrapling` |
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Browser installation fails">
+    If `scrapling install` fails, try:
+    
+    1. Force reinstall: `scrapling install --force`
+    2. Check system dependencies for Playwright
+    3. Ensure you have enough disk space (browsers are ~300MB each)
+    4. Check Python version: `python --version` (must be 3.10+)
+  </Accordion>
+
+  <Accordion title="Import errors after installation">
+    If you get import errors:
+    
+    1. Verify installation: `pip show scrapling`
+    2. Check you installed the right extras: `pip install "scrapling[fetchers]"`
+    3. For browser features, ensure you ran: `scrapling install`
+    4. Try in a fresh Python session or restart your IDE
+  </Accordion>
+
+  <Accordion title="Permission errors on Linux/Mac">
+    If you encounter permission errors:
+    
+    1. Use a virtual environment (recommended)
+    2. Or install with `--user` flag: `pip install --user scrapling`
+    3. For system-wide installation, use `sudo` (not recommended)
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Start scraping in 5 minutes
+  </Card>
+  
+  <Card title="Choose a Fetcher" icon="compass" href="/fetching/choosing-fetcher">
+    Learn which fetcher fits your needs
+  </Card>
+  
+  <Card title="Selection Methods" icon="crosshairs" href="/parsing/selectors">
+    Master CSS, XPath, and more
+  </Card>
+  
+  <Card title="Build Spiders" icon="spider" href="/spiders/getting-started">
+    Scale to full crawling
+  </Card>
+</CardGroup>

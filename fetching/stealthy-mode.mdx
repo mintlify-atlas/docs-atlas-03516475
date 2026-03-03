@@ -1,0 +1,394 @@
+---
+title: Stealthy Mode (StealthyFetcher)
+description: Bypass anti-bot systems like Cloudflare Turnstile with advanced stealth capabilities
+---
+
+`StealthyFetcher` provides advanced anti-bot bypass capabilities using a stealth-patched Chromium browser. It can automatically solve Cloudflare Turnstile challenges and bypass most online bot detection systems.
+
+## Basic Usage
+
+### One-Off Requests
+
+```python
+from scrapling.fetchers import StealthyFetcher
+
+# Simple stealth fetch
+page = StealthyFetcher.fetch(
+    'https://nopecha.com/demo/cloudflare',
+    headless=True
+)
+data = page.css('#padded_content a').getall()
+
+# With Cloudflare bypass
+page = StealthyFetcher.fetch(
+    'https://protected-site.com',
+    headless=True,
+    solve_cloudflare=True,
+    network_idle=True
+)
+```
+
+### With StealthySession
+
+For multiple requests, use `StealthySession` to keep the browser open:
+
+```python
+from scrapling.fetchers import StealthySession
+
+with StealthySession(headless=True, solve_cloudflare=True) as session:
+    # First request
+    page1 = session.fetch('https://protected-site.com/page1')
+    
+    # Second request (browser stays open, cookies maintained)
+    page2 = session.fetch('https://protected-site.com/page2')
+    
+    # Third request
+    page3 = session.fetch('https://protected-site.com/page3')
+```
+
+## Key Features
+
+### Cloudflare Bypass
+
+Automatically solve Cloudflare Turnstile and Interstitial challenges:
+
+```python
+page = StealthyFetcher.fetch(
+    'https://nopecha.com/demo/cloudflare',
+    headless=True,
+    solve_cloudflare=True,  # Enable automatic solving
+    timeout=60000           # 60 seconds timeout
+)
+```
+
+Supported Cloudflare challenges:
+- Non-interactive Turnstile
+- Interactive Turnstile
+- Interstitial pages
+- "Just a moment" waiting pages
+
+### Fingerprint Spoofing
+
+Multiple techniques to avoid detection:
+
+```python
+page = StealthyFetcher.fetch(
+    'https://example.com',
+    headless=True,
+    hide_canvas=True,       # Add noise to canvas fingerprinting
+    block_webrtc=True,      # Prevent WebRTC IP leaks
+    allow_webgl=True        # Keep WebGL enabled (recommended)
+)
+```
+
+<Info>
+**Canvas Fingerprinting**: Adds random noise to canvas operations to prevent tracking.
+
+**WebRTC Blocking**: Forces WebRTC to respect proxy settings, preventing local IP leaks.
+
+**WebGL**: Keep enabled by default - many WAFs check for WebGL support.
+</Info>
+
+### Google Search Referer
+
+Make requests appear as if they came from Google search:
+
+```python
+page = StealthyFetcher.fetch(
+    'https://example.com',
+    headless=True,
+    google_search=True  # Default: True
+)
+```
+
+This sets the referer header to look like: `https://www.google.com/search?q=example.com`
+
+## Request Parameters
+
+### StealthyFetcher.fetch()
+
+```python
+StealthyFetcher.fetch(
+    url='https://example.com',
+    
+    # Browser configuration
+    headless=True,                    # Run in headless mode
+    real_chrome=False,                # Use installed Chrome instead of Chromium
+    
+    # Anti-detection
+    solve_cloudflare=False,           # Auto-solve Cloudflare challenges
+    hide_canvas=False,                # Canvas fingerprint protection
+    block_webrtc=False,               # Block WebRTC IP leaks
+    allow_webgl=True,                 # Enable WebGL (recommended)
+    
+    # Headers and referer
+    google_search=True,               # Add Google search referer
+    extra_headers={'Custom': 'value'},# Additional headers
+    useragent='Mozilla/5.0...',       # Custom user agent
+    
+    # Timing and waits
+    timeout=30000,                    # Operation timeout (ms)
+    wait=0,                           # Extra wait after load (ms)
+    network_idle=False,               # Wait for network idle
+    load_dom=True,                    # Wait for DOM load
+    
+    # Selectors and actions
+    wait_selector='#content',         # Wait for selector
+    wait_selector_state='attached',   # Selector state: attached/visible/hidden
+    page_action=lambda page: page.click('#button'),  # Custom actions
+    
+    # Resources and performance
+    disable_resources=False,          # Block images, fonts, etc.
+    blocked_domains={'analytics.com', 'ads.com'},  # Block domains
+    
+    # Session and state
+    cookies=[{'name': 'session', 'value': 'xyz', 'domain': 'example.com'}],
+    user_data_dir='/path/to/profile', # Persistent browser profile
+    init_script='/path/to/script.js', # JavaScript to run on page creation
+    
+    # Locale and timezone
+    locale='en-US',                   # Browser locale
+    timezone_id='America/New_York',   # Browser timezone
+    
+    # Advanced
+    proxy='http://proxy:8080',        # Proxy configuration
+    cdp_url='http://localhost:9222',  # Connect to existing browser
+    extra_flags=['--flag=value'],     # Additional Chrome flags
+)
+```
+
+## Advanced Features
+
+### Page Actions
+
+Execute custom automation before returning the response:
+
+```python
+def custom_action(page):
+    # Click a button
+    page.click('button#load-more')
+    
+    # Wait for new content
+    page.wait_for_selector('.new-content')
+    
+    # Scroll to bottom
+    page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+
+page = StealthyFetcher.fetch(
+    'https://example.com',
+    headless=True,
+    page_action=custom_action
+)
+```
+
+### Wait for Selectors
+
+Wait for specific elements before returning:
+
+```python
+page = StealthyFetcher.fetch(
+    'https://spa-site.com',
+    headless=True,
+    wait_selector='.dynamic-content',
+    wait_selector_state='visible',  # Options: attached, visible, hidden
+    timeout=60000
+)
+```
+
+### Resource Blocking
+
+Block unnecessary resources for faster loading:
+
+```python
+page = StealthyFetcher.fetch(
+    'https://example.com',
+    headless=True,
+    disable_resources=True,  # Blocks: fonts, images, media, stylesheets, etc.
+    blocked_domains={'analytics.google.com', 'doubleclick.net'}
+)
+```
+
+Blocked resource types:
+- `font`, `image`, `media`
+- `beacon`, `object`, `imageset`
+- `texttrack`, `websocket`
+- `csp_report`, `stylesheet`
+
+### Persistent Browser Profiles
+
+Maintain browser state across sessions:
+
+```python
+with StealthySession(
+    headless=True,
+    user_data_dir='./browser_profile',  # Persistent profile
+    solve_cloudflare=True
+) as session:
+    # First time: solve Cloudflare and save cookies
+    page1 = session.fetch('https://protected-site.com')
+    
+    # Subsequent requests use saved cookies
+    page2 = session.fetch('https://protected-site.com/data')
+```
+
+### Real Chrome vs Chromium
+
+Use your installed Chrome browser for maximum compatibility:
+
+```python
+page = StealthyFetcher.fetch(
+    'https://example.com',
+    headless=True,
+    real_chrome=True  # Use system Chrome instead of Chromium
+)
+```
+
+<Warning>
+Using `real_chrome=True` requires Chrome to be installed on your system.
+</Warning>
+
+### CDP URL Connection
+
+Connect to an existing browser instance:
+
+```python
+# Start Chrome with remote debugging:
+# google-chrome --remote-debugging-port=9222
+
+page = StealthyFetcher.fetch(
+    'https://example.com',
+    cdp_url='http://localhost:9222'
+)
+```
+
+## Session Management
+
+### Basic Session
+
+```python
+from scrapling.fetchers import StealthySession
+
+with StealthySession(headless=True) as session:
+    page1 = session.fetch('https://example.com/login')
+    page2 = session.fetch('https://example.com/dashboard')  # Cookies maintained
+```
+
+### Async Session
+
+```python
+import asyncio
+from scrapling.fetchers import AsyncStealthySession
+
+async def scrape():
+    async with AsyncStealthySession(
+        headless=True,
+        max_pages=3  # Pool of 3 browser tabs
+    ) as session:
+        # Concurrent requests
+        tasks = [
+            session.fetch('https://example.com/page1'),
+            session.fetch('https://example.com/page2'),
+            session.fetch('https://example.com/page3'),
+        ]
+        results = await asyncio.gather(*tasks)
+        
+        # Check pool stats
+        print(session.get_pool_stats())  # {busy: 0, free: 3, error: 0}
+
+asyncio.run(scrape())
+```
+
+## Adaptive Mode
+
+Enable adaptive element finding for website changes:
+
+```python
+from scrapling.fetchers import StealthyFetcher
+
+# Enable adaptive mode globally
+StealthyFetcher.adaptive = True
+
+page = StealthyFetcher.fetch(
+    'https://example.com',
+    headless=True,
+    network_idle=True
+)
+
+# First time: save element signatures
+products = page.css('.product', auto_save=True)
+
+# Later, if website structure changes:
+products = page.css('.product', adaptive=True)  # Finds elements even if CSS changed
+```
+
+## Error Handling
+
+```python
+from scrapling.fetchers import StealthyFetcher
+from playwright.sync_api import TimeoutError, Error
+
+try:
+    page = StealthyFetcher.fetch(
+        'https://example.com',
+        headless=True,
+        timeout=30000,
+        solve_cloudflare=True
+    )
+except TimeoutError:
+    print("Request timed out")
+except Error as e:
+    print(f"Browser error: {e}")
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use sessions for multiple requests">
+    Always use `StealthySession` when making multiple requests. This keeps the browser open and maintains cookies, significantly improving performance.
+  </Accordion>
+
+  <Accordion title="Set appropriate timeouts">
+    Cloudflare solving can take 10-30 seconds. Set `timeout=60000` (60s) when using `solve_cloudflare=True`.
+  </Accordion>
+
+  <Accordion title="Block unnecessary resources">
+    Enable `disable_resources=True` to block images, fonts, and stylesheets for faster page loads.
+  </Accordion>
+
+  <Accordion title="Keep WebGL enabled">
+    Many anti-bot systems check for WebGL support. Keep `allow_webgl=True` (default) for better stealth.
+  </Accordion>
+
+  <Accordion title="Use Google referer">
+    Keep `google_search=True` (default) to make requests appear more legitimate.
+  </Accordion>
+
+  <Accordion title="Run headless in production">
+    Use `headless=True` in production. Set to `False` only for debugging.
+  </Accordion>
+</AccordionGroup>
+
+## Comparison with Other Fetchers
+
+| Feature | Fetcher | StealthyFetcher | DynamicFetcher |
+|---------|---------|-----------------|----------------|
+| Speed | ⚡⚡⚡ | ⚡⚡ | ⚡ |
+| Cloudflare Bypass | ❌ | ✅ | ❌ |
+| Canvas Protection | ❌ | ✅ | ❌ |
+| WebRTC Blocking | ❌ | ✅ | ❌ |
+| JavaScript Execution | ❌ | ✅ | ✅ |
+| Resource Usage | Low | Medium | High |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Browser Automation" icon="browser" href="/fetching/browser-automation">
+    Learn about DynamicFetcher for general automation
+  </Card>
+  <Card title="Sessions" icon="arrows-rotate" href="/fetching/sessions">
+    Master session management
+  </Card>
+  <Card title="Proxy Rotation" icon="shuffle" href="/fetching/proxy-rotation">
+    Rotate proxies for stealth sessions
+  </Card>
+</CardGroup>

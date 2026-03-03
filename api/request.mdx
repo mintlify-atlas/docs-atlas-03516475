@@ -1,0 +1,349 @@
+---
+title: Request
+description: Represents a request to be processed by a Spider
+---
+
+The `Request` class represents a single request in Scrapling's spider framework. It encapsulates the URL, callback, priority, metadata, and session parameters for fetching and processing web pages.
+
+## Class Definition
+
+```python
+from scrapling.spiders import Request
+
+class Request:
+    """Represents a request to be processed by a Spider."""
+```
+
+## Constructor
+
+```python
+def __init__(
+    self,
+    url: str,
+    sid: str = "",
+    callback: Callable[[Response], AsyncGenerator] | None = None,
+    priority: int = 0,
+    dont_filter: bool = False,
+    meta: dict[str, Any] | None = None,
+    _retry_count: int = 0,
+    **kwargs: Any
+)
+```
+
+<ParamField path="url" type="str" required>
+  The URL to request.
+</ParamField>
+
+<ParamField path="sid" type="str" default='""'>
+  Session ID to use for this request. If empty, the spider's default session is used.
+</ParamField>
+
+<ParamField path="callback" type="Callable | None" default="None">
+  Async generator function to process the response. If None, the spider's `parse()` method is used.
+</ParamField>
+
+<ParamField path="priority" type="int" default="0">
+  Request priority. Higher values are processed first. Default is 0.
+</ParamField>
+
+<ParamField path="dont_filter" type="bool" default="False">
+  If True, this request won't be filtered by the duplicate filter, even if it's already been seen.
+</ParamField>
+
+<ParamField path="meta" type="dict[str, Any] | None" default="None">
+  Arbitrary metadata dictionary to pass along with the request. Merged with response.meta.
+</ParamField>
+
+<ParamField path="_retry_count" type="int" default="0">
+  Internal retry counter (managed automatically by the engine).
+</ParamField>
+
+<ParamField path="kwargs" type="Any">
+  Additional session-specific keyword arguments (e.g., `headers`, `proxy`, `method`, `data`, `json`). These are passed to the session's fetch method.
+</ParamField>
+
+## Attributes
+
+<ParamField path="url" type="str">
+  The request URL.
+</ParamField>
+
+<ParamField path="sid" type="str">
+  Session ID for this request.
+</ParamField>
+
+<ParamField path="callback" type="Callable | None">
+  Response processing callback.
+</ParamField>
+
+<ParamField path="priority" type="int">
+  Request priority for scheduling.
+</ParamField>
+
+<ParamField path="dont_filter" type="bool">
+  Whether to bypass duplicate filtering.
+</ParamField>
+
+<ParamField path="meta" type="dict[str, Any]">
+  Metadata dictionary.
+</ParamField>
+
+<ParamField path="domain" type="str" readonly>
+  Cached property that extracts the domain from the URL (e.g., "example.com").
+</ParamField>
+
+## Methods
+
+### copy
+
+```python
+def copy(self) -> Request
+```
+
+Create a copy of this request. Useful when retrying or modifying requests.
+
+**Returns:** A new Request instance with copied attributes
+
+**Example:**
+```python
+original = Request("https://example.com", priority=5)
+retry = original.copy()
+retry.priority = 10  # Increase priority for retry
+```
+
+### update_fingerprint
+
+```python
+def update_fingerprint(
+    self,
+    include_kwargs: bool = False,
+    include_headers: bool = False,
+    keep_fragments: bool = False,
+) -> bytes
+```
+
+Generate a unique fingerprint for deduplication. The fingerprint is cached in `self._fp` after first computation.
+
+<ParamField path="include_kwargs" type="bool" default="False">
+  Include session kwargs (except data/json) in the fingerprint.
+</ParamField>
+
+<ParamField path="include_headers" type="bool" default="False">
+  Include request headers in the fingerprint.
+</ParamField>
+
+<ParamField path="keep_fragments" type="bool" default="False">
+  Keep URL fragments when canonicalizing the URL for fingerprinting.
+</ParamField>
+
+**Returns:** SHA-1 hash bytes representing the unique fingerprint
+
+<Note>
+  The fingerprint is based on: URL (canonicalized), session ID, HTTP method, request body (data/json), and optionally headers and kwargs.
+</Note>
+
+## Special Methods
+
+### Comparison
+
+Requests can be compared for priority-based sorting:
+
+```python
+# Higher priority requests are "greater than" lower priority ones
+req1 = Request("https://example.com", priority=5)
+req2 = Request("https://example.com", priority=10)
+
+req2 > req1  # True
+req1 < req2  # True
+```
+
+### Equality
+
+Requests are equal if they have the same fingerprint:
+
+```python
+req1 = Request("https://example.com")
+req2 = Request("https://example.com")
+
+# Must generate fingerprints first
+req1.update_fingerprint()
+req2.update_fingerprint()
+
+req1 == req2  # True (same URL, same session, same method)
+```
+
+<Warning>
+  You must call `update_fingerprint()` before comparing requests with `==`, otherwise a `RuntimeError` is raised.
+</Warning>
+
+### String Representation
+
+```python
+req = Request("https://example.com", priority=5, callback=spider.parse)
+
+print(req)
+# Output: https://example.com
+
+print(repr(req))
+# Output: <Request(https://example.com) priority=5 callback=parse>
+```
+
+## Serialization
+
+Requests support pickling for checkpoint/resume functionality. The callback is stored as a method name string and restored from the spider instance.
+
+```python
+import pickle
+
+req = Request("https://example.com", callback=spider.parse)
+serialized = pickle.dumps(req)
+restored = pickle.loads(serialized)
+
+# Callback is None after unpickling
+restored._restore_callback(spider)  # Restore from spider
+```
+
+## Usage Examples
+
+### Basic Request
+
+```python
+from scrapling.spiders import Request
+
+# Simple GET request
+request = Request("https://api.example.com/data")
+```
+
+### POST Request with JSON
+
+```python
+request = Request(
+    "https://api.example.com/search",
+    method="POST",
+    json={"query": "scrapling", "limit": 10},
+    headers={"Authorization": "Bearer token"}
+)
+```
+
+### Request with Custom Callback
+
+```python
+class MySpider(Spider):
+    async def parse(self, response):
+        # Extract detail page links
+        for link in response.css("a.detail::attr(href)").getall():
+            yield Request(
+                response.urljoin(link),
+                callback=self.parse_detail,
+                priority=10  # Higher priority for detail pages
+            )
+    
+    async def parse_detail(self, response):
+        yield {
+            "title": response.css("h1::text").get(),
+            "content": response.css(".content::text").get()
+        }
+```
+
+### Request with Metadata
+
+```python
+async def parse(self, response):
+    # Pass data between callbacks using meta
+    category = response.css(".category::text").get()
+    
+    for product in response.css(".product"):
+        link = product.css("a::attr(href)").get()
+        yield Request(
+            response.urljoin(link),
+            callback=self.parse_product,
+            meta={"category": category, "page": 1}
+        )
+
+async def parse_product(self, response):
+    # Access metadata from response.meta
+    yield {
+        "name": response.css(".name::text").get(),
+        "category": response.meta["category"],
+        "page": response.meta["page"]
+    }
+```
+
+### Request with Different Session
+
+```python
+class MySpider(Spider):
+    def configure_sessions(self, manager):
+        from scrapling.fetchers import FetcherSession, AsyncStealthySession
+        
+        manager.add("default", FetcherSession())
+        manager.add("stealth", AsyncStealthySession())
+    
+    async def parse(self, response):
+        # Use stealth session for sensitive pages
+        yield Request(
+            "https://example.com/protected",
+            sid="stealth",
+            callback=self.parse_protected
+        )
+```
+
+### Request with Proxy
+
+```python
+from scrapling.engines.toolbelt import ProxyRotator
+
+class MySpider(Spider):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.proxy_rotator = ProxyRotator([
+            "http://proxy1:8080",
+            "http://proxy2:8080"
+        ])
+    
+    async def parse(self, response):
+        yield Request(
+            "https://example.com/data",
+            proxy=self.proxy_rotator.get_proxy()
+        )
+```
+
+### Bypassing Duplicate Filter
+
+```python
+async def parse(self, response):
+    # Normal request - will be filtered if seen before
+    yield Request("https://example.com/data")
+    
+    # Force re-fetch even if seen before
+    yield Request(
+        "https://example.com/data",
+        dont_filter=True,
+        meta={"reason": "forced_update"}
+    )
+```
+
+## Internal Attributes
+
+<ParamField path="_retry_count" type="int">
+  Number of times this request has been retried (managed by CrawlerEngine).
+</ParamField>
+
+<ParamField path="_session_kwargs" type="dict">
+  Dictionary of keyword arguments to pass to the session's fetch method.
+</ParamField>
+
+<ParamField path="_fp" type="bytes | None">
+  Cached fingerprint bytes. None until `update_fingerprint()` is called.
+</ParamField>
+
+<ParamField path="_callback_name" type="str | None">
+  Temporary attribute used during pickling to store callback method name.
+</ParamField>
+
+## See Also
+
+- [Spider](/api/spider) - Creating spiders that use requests
+- [SessionManager](/api/session-manager) - Managing session IDs
+- [CrawlerEngine](/api/crawler-engine) - How requests are processed
+- [Response](https://scrapling.com/reference/adaptor) - Response objects from requests

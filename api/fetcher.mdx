@@ -1,0 +1,293 @@
+---
+title: 'Fetcher & AsyncFetcher'
+description: 'HTTP-based fetchers for basic GET, POST, PUT, and DELETE requests'
+---
+
+## Fetcher
+
+A basic `Fetcher` class that performs synchronous HTTP requests based on `curl_cffi`.
+
+```python
+from scrapling import Fetcher
+
+response = Fetcher.get('https://example.com')
+print(response.status)
+```
+
+### Methods
+
+#### get()
+
+Perform a GET request.
+
+```python
+Fetcher.get(url: str, **kwargs) -> Response
+```
+
+<ParamField path="url" type="str" required>
+  Target URL for the request
+</ParamField>
+
+<ParamField path="params" type="dict">
+  Query string parameters for the request
+</ParamField>
+
+<ParamField path="headers" type="dict">
+  Headers to include in the request
+</ParamField>
+
+<ParamField path="cookies" type="dict">
+  Cookies to use in the request
+</ParamField>
+
+<ParamField path="timeout" type="int | float" default="30">
+  Number of seconds to wait before timing out
+</ParamField>
+
+<ParamField path="follow_redirects" type="bool" default="True">
+  Whether to follow redirects
+</ParamField>
+
+<ParamField path="max_redirects" type="int" default="30">
+  Maximum number of redirects. Use -1 for unlimited
+</ParamField>
+
+<ParamField path="retries" type="int" default="3">
+  Number of retry attempts
+</ParamField>
+
+<ParamField path="retry_delay" type="int" default="1">
+  Number of seconds to wait between retry attempts
+</ParamField>
+
+<ParamField path="proxies" type="dict">
+  Dict of proxies to use. Format: `{"http": proxy_url, "https": proxy_url}`
+</ParamField>
+
+<ParamField path="proxy" type="str">
+  Proxy URL to use. Format: `"http://username:password@localhost:8030"`
+</ParamField>
+
+<ParamField path="proxy_auth" type="tuple">
+  HTTP basic auth for proxy, tuple of (username, password)
+</ParamField>
+
+<ParamField path="auth" type="tuple">
+  HTTP basic auth tuple of (username, password). Only basic auth is supported
+</ParamField>
+
+<ParamField path="verify" type="bool" default="True">
+  Whether to verify HTTPS certificates
+</ParamField>
+
+<ParamField path="cert" type="str | tuple">
+  Tuple of (cert, key) filenames for the client certificate
+</ParamField>
+
+<ParamField path="impersonate" type="str" default="chrome">
+  Browser version to impersonate. Automatically defaults to the latest available Chrome version
+</ParamField>
+
+<ParamField path="http3" type="bool" default="False">
+  Whether to use HTTP3. Might be problematic if used with `impersonate`
+</ParamField>
+
+<ParamField path="stealthy_headers" type="bool" default="True">
+  If enabled, creates and adds real browser headers
+</ParamField>
+
+<ResponseField name="Response" type="Response">
+  A Response object containing the fetched page data
+</ResponseField>
+
+#### post()
+
+Perform a POST request.
+
+```python
+Fetcher.post(url: str, **kwargs) -> Response
+```
+
+<ParamField path="url" type="str" required>
+  Target URL for the request
+</ParamField>
+
+<ParamField path="data" type="dict">
+  Form data to include in the request body
+</ParamField>
+
+<ParamField path="json" type="dict">
+  A JSON serializable object to include in the body of the request
+</ParamField>
+
+All other parameters are the same as `get()`.
+
+<ResponseField name="Response" type="Response">
+  A Response object containing the fetched page data
+</ResponseField>
+
+#### put()
+
+Perform a PUT request.
+
+```python
+Fetcher.put(url: str, **kwargs) -> Response
+```
+
+Parameters are identical to `post()`.
+
+<ResponseField name="Response" type="Response">
+  A Response object containing the fetched page data
+</ResponseField>
+
+#### delete()
+
+Perform a DELETE request.
+
+```python
+Fetcher.delete(url: str, **kwargs) -> Response
+```
+
+Parameters are identical to `post()`.
+
+<Note>
+  Be careful of sending a body in a DELETE request, as it might cause some websites to reject the request per [RFC 7231](https://www.rfc-editor.org/rfc/rfc7231#section-4.3.5). However, some websites accept it depending on their implementation.
+</Note>
+
+<ResponseField name="Response" type="Response">
+  A Response object containing the fetched page data
+</ResponseField>
+
+---
+
+## AsyncFetcher
+
+A basic `Fetcher` class that performs asynchronous HTTP requests based on `curl_cffi`.
+
+```python
+import asyncio
+from scrapling import AsyncFetcher
+
+async def main():
+    response = await AsyncFetcher.get('https://example.com')
+    print(response.status)
+
+asyncio.run(main())
+```
+
+### Methods
+
+#### get()
+
+Perform an asynchronous GET request.
+
+```python
+AsyncFetcher.get(url: str, **kwargs) -> Awaitable[Response]
+```
+
+All parameters are identical to `Fetcher.get()`.
+
+<ResponseField name="Response" type="Awaitable[Response]">
+  An awaitable Response object containing the fetched page data
+</ResponseField>
+
+#### post()
+
+Perform an asynchronous POST request.
+
+```python
+AsyncFetcher.post(url: str, **kwargs) -> Awaitable[Response]
+```
+
+All parameters are identical to `Fetcher.post()`.
+
+<ResponseField name="Response" type="Awaitable[Response]">
+  An awaitable Response object containing the fetched page data
+</ResponseField>
+
+#### put()
+
+Perform an asynchronous PUT request.
+
+```python
+AsyncFetcher.put(url: str, **kwargs) -> Awaitable[Response]
+```
+
+All parameters are identical to `Fetcher.put()`.
+
+<ResponseField name="Response" type="Awaitable[Response]">
+  An awaitable Response object containing the fetched page data
+</ResponseField>
+
+#### delete()
+
+Perform an asynchronous DELETE request.
+
+```python
+AsyncFetcher.delete(url: str, **kwargs) -> Awaitable[Response]
+```
+
+All parameters are identical to `Fetcher.delete()`.
+
+<ResponseField name="Response" type="Awaitable[Response]">
+  An awaitable Response object containing the fetched page data
+</ResponseField>
+
+---
+
+## Configuration
+
+Both `Fetcher` and `AsyncFetcher` inherit from `BaseFetcher` and support global configuration:
+
+### configure()
+
+Set parser arguments globally for all requests.
+
+```python
+Fetcher.configure(
+    huge_tree=True,
+    adaptive=False,
+    keep_comments=False
+)
+```
+
+<ParamField path="huge_tree" type="bool" default="True">
+  Enable parsing of huge HTML trees
+</ParamField>
+
+<ParamField path="adaptive" type="bool" default="False">
+  Enable adaptive parsing mode
+</ParamField>
+
+<ParamField path="storage" type="type" default="SQLiteStorageSystem">
+  Storage system class to use
+</ParamField>
+
+<ParamField path="keep_cdata" type="bool" default="False">
+  Keep CDATA sections in parsed content
+</ParamField>
+
+<ParamField path="storage_args" type="dict">
+  Additional arguments for the storage system
+</ParamField>
+
+<ParamField path="keep_comments" type="bool" default="False">
+  Keep HTML comments in parsed content
+</ParamField>
+
+<ParamField path="adaptive_domain" type="str" default="">
+  Domain to use for adaptive parsing
+</ParamField>
+
+### display_config()
+
+Display the current configuration.
+
+```python
+config = Fetcher.display_config()
+print(config)
+```
+
+<ResponseField name="config" type="dict">
+  Dictionary containing all current parser configuration values
+</ResponseField>

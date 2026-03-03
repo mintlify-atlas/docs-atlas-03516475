@@ -1,0 +1,409 @@
+---
+title: 'Selectors'
+description: 'Query elements using CSS, XPath, and text-based selectors'
+---
+
+## Overview
+
+Scrapling provides multiple selector methods to find elements in HTML documents. You can use CSS3 selectors, XPath expressions, or search by text content.
+
+## CSS Selectors
+
+Search the DOM tree using CSS3 selectors.
+
+```python
+from scrapling import Fetcher
+
+page = Fetcher.fetch('https://example.com')
+
+# Find elements with CSS
+links = page.css('a.nav-link')
+headers = page.css('h1, h2, h3')
+```
+
+### Method Signature
+
+```python
+def css(
+    selector: str,
+    identifier: str = "",
+    adaptive: bool = False,
+    auto_save: bool = False,
+    percentage: int = 0,
+) -> Selectors
+```
+
+<ParamField path="selector" type="str" required>
+  The CSS3 selector to be used
+</ParamField>
+
+<ParamField path="identifier" type="str" default="">
+  A string that will be used to save/retrieve element's data in adaptive mode. If not provided, the selector will be used as identifier.
+  
+  <Warning>It's recommended to use the identifier argument if you plan to use a different selector later and want to relocate the same element(s)</Warning>
+</ParamField>
+
+<ParamField path="adaptive" type="bool" default="false">
+  When enabled, the function will try to relocate the element if it was saved before
+</ParamField>
+
+<ParamField path="auto_save" type="bool" default="false">
+  Automatically save new elements for adaptive mode later
+</ParamField>
+
+<ParamField path="percentage" type="int" default="0">
+  The minimum percentage to accept while adaptive is working. The percentage calculation depends on the page structure.
+</ParamField>
+
+### Examples
+
+<CodeGroup>
+```python Basic CSS Selection
+# Select by class
+products = page.css('.product-card')
+
+# Select by ID
+header = page.css('#main-header')
+
+# Complex selectors
+active_links = page.css('nav a.active[href*="/products/"]')
+```
+
+```python Multiple Selectors
+# Combine multiple selectors with comma
+headings = page.css('h1, h2, h3')
+
+# Pseudo-selectors
+first_item = page.css('ul li:first-child')
+```
+
+```python Chaining Selectors
+# Chain CSS selectors
+container = page.css('.container').first
+items = container.css('.item')
+```
+</CodeGroup>
+
+## XPath Selectors
+
+Search the DOM tree using XPath expressions. XPath provides more powerful querying capabilities than CSS.
+
+### Method Signature
+
+```python
+def xpath(
+    selector: str,
+    identifier: str = "",
+    adaptive: bool = False,
+    auto_save: bool = False,
+    percentage: int = 0,
+    **kwargs: Any,
+) -> Selectors
+```
+
+<ParamField path="selector" type="str" required>
+  The XPath selector to be used
+</ParamField>
+
+<ParamField path="identifier" type="str" default="">
+  A string that will be used to save/retrieve element's data in adaptive mode. If not provided, the selector will be used as identifier.
+</ParamField>
+
+<ParamField path="adaptive" type="bool" default="false">
+  When enabled, the function will try to relocate the element if it was saved before
+</ParamField>
+
+<ParamField path="auto_save" type="bool" default="false">
+  Automatically save new elements for adaptive mode later
+</ParamField>
+
+<ParamField path="percentage" type="int" default="0">
+  The minimum percentage to accept while adaptive is working
+</ParamField>
+
+<ParamField path="**kwargs" type="Any">
+  Additional keyword arguments will be passed as XPath variables in the XPath expression
+</ParamField>
+
+### Examples
+
+<CodeGroup>
+```python Basic XPath
+# Find all links
+links = page.xpath('//a')
+
+# Find elements by attribute
+products = page.xpath('//div[@class="product"]')
+
+# Complex XPath
+titles = page.xpath('//article//h2[contains(@class, "title")]')
+```
+
+```python XPath with Variables
+# Pass variables to XPath
+class_name = "product-card"
+elements = page.xpath('//div[@class=$cls]', cls=class_name)
+```
+
+```python XPath Text Selection
+# Extract text nodes
+text_nodes = page.xpath('//p/text()')
+
+# Extract attribute values
+hrefs = page.xpath('//a/@href')
+```
+</CodeGroup>
+
+## Find Methods
+
+Find elements using flexible filters including tag names, attributes, regex patterns, and custom functions.
+
+### find_all()
+
+Find all elements matching the specified criteria.
+
+```python
+def find_all(
+    *args: str | Iterable[str] | Pattern | Callable | Dict[str, str],
+    **kwargs: str,
+) -> Selectors
+```
+
+<ParamField path="args" type="str | Iterable[str] | Pattern | Callable | Dict[str, str]">
+  - Tag name(s) as strings
+  - Iterable of tag names
+  - Regex patterns to match against text
+  - Callable function that takes a Selector and returns bool
+  - Dictionary of attribute name-value pairs
+</ParamField>
+
+<ParamField path="kwargs" type="str">
+  Attribute names and their values to filter elements. Use `class_` for the class attribute and `for_` for the for attribute.
+</ParamField>
+
+<CodeGroup>
+```python By Tag Name
+# Find all div elements
+divs = page.find_all('div')
+
+# Find multiple tag types
+headings = page.find_all('h1', 'h2', 'h3')
+
+# Using iterable
+tags = ['article', 'section']
+elements = page.find_all(tags)
+```
+
+```python By Attributes
+# Find by class attribute
+products = page.find_all(class_="product-card")
+
+# Multiple attributes
+active_links = page.find_all('a', class_="nav-link", href="/home")
+
+# Using dictionary
+attrs = {"data-id": "123", "class": "item"}
+elements = page.find_all(attrs)
+```
+
+```python By Regex Pattern
+import re
+
+# Find elements with text matching pattern
+pattern = re.compile(r'\$\d+\.\d{2}')
+prices = page.find_all(pattern)
+```
+
+```python By Custom Function
+# Find elements using custom logic
+def has_price(element):
+    return '$' in element.text and element.has_class('price')
+
+priced_items = page.find_all(has_price)
+```
+
+```python Combined Filters
+import re
+
+# Combine tag, attributes, and regex
+pattern = re.compile(r'\d+ items?')
+results = page.find_all('span', class_="count", pattern)
+```
+</CodeGroup>
+
+### find()
+
+Find the first element matching the criteria, or return `None`.
+
+```python
+def find(
+    *args: str | Iterable[str] | Pattern | Callable | Dict[str, str],
+    **kwargs: str,
+) -> Optional[Selector]
+```
+
+Accepts the same parameters as `find_all()` but returns only the first match.
+
+```python
+# Find first matching element
+header = page.find('header', class_="main")
+
+if header:
+    print(header.text)
+else:
+    print("Header not found")
+```
+
+## Text-Based Search
+
+Find elements by their text content.
+
+### find_by_text()
+
+Find elements with matching text content.
+
+```python
+def find_by_text(
+    text: str,
+    first_match: bool = True,
+    partial: bool = False,
+    case_sensitive: bool = False,
+    clean_match: bool = True,
+) -> Selector | Selectors
+```
+
+<ParamField path="text" type="str" required>
+  Text query to match
+</ParamField>
+
+<ParamField path="first_match" type="bool" default="true">
+  Returns the first element that matches conditions
+</ParamField>
+
+<ParamField path="partial" type="bool" default="false">
+  If enabled, returns elements that contain the input text
+</ParamField>
+
+<ParamField path="case_sensitive" type="bool" default="false">
+  If enabled, letter case will be taken into consideration
+</ParamField>
+
+<ParamField path="clean_match" type="bool" default="true">
+  If enabled, ignores all whitespaces and consecutive spaces while matching
+</ParamField>
+
+<CodeGroup>
+```python Exact Match
+# Find element with exact text
+button = page.find_by_text('Submit', first_match=True)
+```
+
+```python Partial Match
+# Find elements containing text
+headers = page.find_by_text('Product', partial=True, first_match=False)
+```
+
+```python Case Sensitive
+# Case-sensitive search
+element = page.find_by_text('API', case_sensitive=True)
+```
+</CodeGroup>
+
+### find_by_regex()
+
+Find elements whose text content matches a regex pattern.
+
+```python
+def find_by_regex(
+    query: str | Pattern[str],
+    first_match: bool = True,
+    case_sensitive: bool = False,
+    clean_match: bool = True,
+) -> Selector | Selectors
+```
+
+<ParamField path="query" type="str | Pattern[str]" required>
+  Regex query/pattern to match
+</ParamField>
+
+<ParamField path="first_match" type="bool" default="true">
+  Return the first element that matches conditions
+</ParamField>
+
+<ParamField path="case_sensitive" type="bool" default="false">
+  If enabled, letter case will be taken into consideration
+</ParamField>
+
+<ParamField path="clean_match" type="bool" default="true">
+  If enabled, ignores all whitespaces and consecutive spaces while matching
+</ParamField>
+
+```python
+import re
+
+# Find prices
+price = page.find_by_regex(r'\$\d+\.\d{2}')
+
+# Find all email addresses
+emails = page.find_by_regex(
+    r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}',
+    first_match=False
+)
+
+# Case-sensitive pattern
+code = page.find_by_regex(r'[A-Z]{3}-\d{4}', case_sensitive=True)
+```
+
+## Advanced: Find Similar Elements
+
+Find elements that are similar to the current element based on structure and attributes.
+
+```python
+def find_similar(
+    similarity_threshold: float = 0.2,
+    ignore_attributes: List | Tuple = ("href", "src"),
+    match_text: bool = False,
+) -> Selectors
+```
+
+<ParamField path="similarity_threshold" type="float" default="0.2">
+  The percentage threshold for attribute matching. Elements are pre-filtered by same depth, tag name, and parent structure before attribute comparison.
+</ParamField>
+
+<ParamField path="ignore_attributes" type="List | Tuple" default="['href', 'src']">
+  Attribute names to ignore while matching. URLs are ignored by default as they often differ between similar elements.
+</ParamField>
+
+<ParamField path="match_text" type="bool" default="false">
+  If True, element text content will be included in similarity calculation
+</ParamField>
+
+<Info>This function is inspired by AutoScraper and is useful for finding repeated patterns like product cards in a list.</Info>
+
+```python
+# Find one product card
+first_product = page.css('.product').first
+
+# Find all similar product cards
+all_products = first_product.find_similar(similarity_threshold=0.3)
+
+for product in all_products:
+    print(product.css('.title').text)
+```
+
+## Selectors vs Selector
+
+- **Selector**: Represents a single element
+- **Selectors**: A list-like container of multiple Selector objects
+
+Both classes have similar methods, with `Selectors` applying operations across all contained elements:
+
+```python
+# Single element (Selector)
+element = page.css('.container').first
+text = element.text  # TextHandler
+
+# Multiple elements (Selectors)
+elements = page.css('.item')
+texts = elements.getall()  # List of TextHandler
+```

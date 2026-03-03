@@ -1,0 +1,522 @@
+---
+title: 'Fetchers'
+description: 'Understanding Scrapling fetcher types and when to use each'
+---
+
+## Overview
+
+Scrapling provides three main fetcher types, each optimized for different scraping scenarios. All fetchers return the same `Response` object, making it easy to switch between them.
+
+<CardGroup cols={3}>
+  <Card title="Fetcher" icon="bolt">
+    Fast HTTP requests with browser impersonation
+  </Card>
+  <Card title="DynamicFetcher" icon="browser">
+    Browser automation for JavaScript sites
+  </Card>
+  <Card title="StealthyFetcher" icon="user-secret">
+    Stealth browser with anti-detection
+  </Card>
+</CardGroup>
+
+## Fetcher (HTTP Client)
+
+The basic `Fetcher` uses `curl_cffi` for fast HTTP requests with browser fingerprint impersonation.
+
+### When to Use
+
+- Static HTML pages
+- APIs and JSON endpoints
+- Sites that don't require JavaScript
+- High-performance scraping (100+ requests/second)
+- When you need HTTP/2 or HTTP/3
+
+### Basic Usage
+
+```python
+from scrapling import Fetcher
+
+response = Fetcher.fetch('https://httpbin.org/get')
+print(response.status)  # 200
+print(response.text)    # Response body
+```
+
+### Browser Impersonation
+
+Scrapling can impersonate various browsers to bypass basic fingerprint detection:
+
+```python
+# Impersonate Chrome (default)
+response = Fetcher.fetch(
+    'https://httpbin.org/headers',
+    impersonate='chrome'
+)
+
+# Impersonate Firefox
+response = Fetcher.fetch(
+    'https://httpbin.org/headers',
+    impersonate='firefox'
+)
+
+# Random browser from list
+response = Fetcher.fetch(
+    'https://httpbin.org/headers',
+    impersonate=['chrome', 'firefox', 'safari', 'edge']
+)
+```
+
+### Stealth Headers
+
+By default, Scrapling generates realistic browser headers:
+
+```python
+response = Fetcher.fetch(
+    'https://httpbin.org/headers',
+    stealthy_headers=True  # Enabled by default
+)
+
+# Headers include:
+# - User-Agent (matches impersonated browser)
+# - Accept, Accept-Language, Accept-Encoding
+# - Referer (simulates Google search)
+# - sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform
+# - And more realistic browser headers
+```
+
+Disable for custom headers:
+
+```python
+response = Fetcher.fetch(
+    'https://httpbin.org/headers',
+    stealthy_headers=False,
+    headers={'User-Agent': 'MyBot/1.0'}
+)
+```
+
+### Request Parameters
+
+```python
+response = Fetcher.fetch(
+    'https://httpbin.org/get',
+    params={'key': 'value'},        # Query parameters
+    headers={'Custom': 'Header'},   # Custom headers
+    cookies={'session': 'abc123'},  # Cookies
+    timeout=30,                     # Timeout in seconds
+    retries=3,                      # Number of retries
+    retry_delay=1,                  # Delay between retries
+    follow_redirects=True,          # Follow redirects
+    max_redirects=30,               # Max redirect hops
+    verify=True,                    # Verify SSL certificates
+    proxy='http://user:pass@host:port',  # Proxy URL
+    http3=False                     # Enable HTTP/3
+)
+```
+
+### POST Requests
+
+```python
+# Form data
+response = Fetcher.post(
+    'https://httpbin.org/post',
+    data={'key': 'value'}
+)
+
+# JSON data
+response = Fetcher.post(
+    'https://httpbin.org/post',
+    json={'key': 'value'}
+)
+
+# Files
+response = Fetcher.post(
+    'https://httpbin.org/post',
+    files={'file': open('data.txt', 'rb')}
+)
+```
+
+### Async Support
+
+```python
+from scrapling import AsyncFetcher
+import asyncio
+
+async def scrape():
+    response = await AsyncFetcher.get('https://httpbin.org/get')
+    return response.json()
+
+data = asyncio.run(scrape())
+```
+
+## DynamicFetcher (Browser Automation)
+
+The `DynamicFetcher` uses Playwright to control a real Chromium browser, perfect for JavaScript-heavy sites.
+
+### When to Use
+
+- Single-page applications (SPAs)
+- Sites with dynamic content loaded by JavaScript
+- Pages requiring user interaction
+- Sites that check for browser features
+- When you need to execute custom JavaScript
+
+### Basic Usage
+
+```python
+from scrapling import DynamicFetcher
+
+response = DynamicFetcher.fetch('https://example.com')
+print(response.status)  # 200
+title = response.css('title::text').get()
+```
+
+### JavaScript Execution
+
+Wait for JavaScript to fully load:
+
+```python
+response = DynamicFetcher.fetch(
+    'https://spa-site.com',
+    load_dom=True,       # Wait for DOMContentLoaded (default: True)
+    network_idle=True,   # Wait for network idle (default: False)
+    wait=1000           # Additional wait in milliseconds
+)
+```
+
+### Resource Blocking
+
+Speed up requests by blocking unnecessary resources:
+
+```python
+response = DynamicFetcher.fetch(
+    'https://example.com',
+    disable_resources=True  # Blocks: images, fonts, media, etc.
+)
+
+# Block specific domains
+response = DynamicFetcher.fetch(
+    'https://example.com',
+    blocked_domains={'google-analytics.com', 'facebook.com', 'ads.example.com'}
+)
+```
+
+### Wait for Selectors
+
+Wait for specific elements before returning:
+
+```python
+response = DynamicFetcher.fetch(
+    'https://example.com',
+    wait_selector='.product-list',           # CSS selector
+    wait_selector_state='visible'            # attached, visible, hidden
+)
+```
+
+### Page Automation
+
+Execute custom browser actions:
+
+```python
+def automate(page):
+    # Click button
+    page.click('button#load-more')
+    
+    # Fill form
+    page.fill('input[name="search"]', 'query')
+    page.press('input[name="search"]', 'Enter')
+    
+    # Scroll
+    page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+    
+    # Wait for element
+    page.wait_for_selector('.results')
+
+response = DynamicFetcher.fetch(
+    'https://example.com',
+    page_action=automate
+)
+```
+
+### Custom JavaScript
+
+Inject JavaScript on page load:
+
+```python
+# Create init.js file
+with open('/path/to/init.js', 'w') as f:
+    f.write('''
+        // Runs on every page load
+        Object.defineProperty(navigator, 'webdriver', {get: () => false});
+        console.log('Custom script loaded');
+    ''')
+
+response = DynamicFetcher.fetch(
+    'https://example.com',
+    init_script='/path/to/init.js'
+)
+```
+
+### Browser Configuration
+
+```python
+response = DynamicFetcher.fetch(
+    'https://example.com',
+    headless=True,               # Run in headless mode (default)
+    useragent='Custom UA',       # Custom user agent
+    locale='en-US',              # Browser locale
+    timeout=30000,               # Timeout in milliseconds
+    proxy='http://host:port',    # Proxy configuration
+    extra_headers={'X-Custom': 'Value'},  # Extra headers
+    extra_flags=['--flag1', '--flag2']    # Browser flags
+)
+```
+
+### Connect to Existing Browser
+
+```python
+# Use real Chrome installation
+response = DynamicFetcher.fetch(
+    'https://example.com',
+    real_chrome=True
+)
+
+# Connect to remote browser via CDP
+response = DynamicFetcher.fetch(
+    'https://example.com',
+    cdp_url='http://localhost:9222'
+)
+```
+
+### Async Browser Automation
+
+```python
+import asyncio
+
+async def scrape():
+    response = await DynamicFetcher.async_fetch('https://example.com')
+    return response.css('title::text').get()
+
+title = asyncio.run(scrape())
+```
+
+## StealthyFetcher (Anti-Detection)
+
+The `StealthyFetcher` extends `DynamicFetcher` with advanced anti-detection techniques.
+
+### When to Use
+
+- Sites with bot detection (Cloudflare, DataDome, PerimeterX)
+- Sites that check for headless browsers
+- Sites with aggressive fingerprinting
+- When you need to bypass CAPTCHAs
+- Production scraping at scale
+
+### Basic Usage
+
+```python
+from scrapling import StealthyFetcher
+
+response = StealthyFetcher.fetch('https://protected-site.com')
+```
+
+### Cloudflare Solver
+
+Automatically solve Cloudflare challenges:
+
+```python
+response = StealthyFetcher.fetch(
+    'https://cloudflare-protected.com',
+    solve_cloudflare=True  # Solves Turnstile and Interstitial challenges
+)
+```
+
+### Anti-Fingerprinting
+
+```python
+response = StealthyFetcher.fetch(
+    'https://protected-site.com',
+    hide_canvas=True,     # Randomize canvas fingerprint
+    block_webrtc=True,    # Prevent WebRTC IP leak
+    allow_webgl=True      # Keep WebGL enabled (recommended)
+)
+```
+
+### Stealth Configuration
+
+All `DynamicFetcher` options plus:
+
+```python
+response = StealthyFetcher.fetch(
+    'https://protected-site.com',
+    headless=True,                # Stealth works in headless mode
+    hide_canvas=True,            # Canvas noise injection
+    block_webrtc=True,           # WebRTC leak prevention
+    allow_webgl=True,            # WebGL support (recommended)
+    user_data_dir='/path/to/profile',  # Persistent browser profile
+    timezone_id='America/New_York'     # Custom timezone
+)
+```
+
+### Stealth Features
+
+The `StealthyFetcher` automatically:
+
+- Patches `navigator.webdriver` detection
+- Randomizes browser fingerprints
+- Adds canvas noise
+- Blocks WebRTC leaks
+- Mimics real user behavior
+- Passes most bot detection tests
+
+## Choosing the Right Fetcher
+
+<CardGroup cols={2}>
+  <Card title="Use Fetcher when:">
+    - Site is static HTML
+    - No JavaScript required
+    - Speed is critical
+    - API endpoints
+    - Simple scraping tasks
+  </Card>
+  <Card title="Use DynamicFetcher when:">
+    - JavaScript is required
+    - SPA or dynamic content
+    - Need to interact with page
+    - Custom automation needed
+  </Card>
+</CardGroup>
+
+<CardGroup cols={2}>
+  <Card title="Use StealthyFetcher when:">
+    - Bot detection present
+    - Cloudflare protection
+    - Aggressive fingerprinting
+    - Production at scale
+    - Need maximum stealth
+  </Card>
+  <Card title="Performance Comparison">
+    **Fetcher:** ~100-200 req/s
+    
+    **DynamicFetcher:** ~5-10 req/s
+    
+    **StealthyFetcher:** ~3-8 req/s
+  </Card>
+</CardGroup>
+
+## Unified Response API
+
+All fetchers return the same `Response` type with identical parsing capabilities:
+
+```python
+# All these work identically
+response1 = Fetcher.fetch(url)
+response2 = DynamicFetcher.fetch(url)
+response3 = StealthyFetcher.fetch(url)
+
+# Same parsing API
+title1 = response1.css('title::text').get()
+title2 = response2.css('title::text').get()
+title3 = response3.css('title::text').get()
+
+# Same HTTP metadata
+print(response1.status, response1.headers)
+print(response2.status, response2.headers)
+print(response3.status, response3.headers)
+```
+
+## Error Handling
+
+All fetchers support automatic retries:
+
+```python
+try:
+    response = Fetcher.fetch(
+        'https://example.com',
+        retries=3,        # Retry up to 3 times
+        retry_delay=1     # Wait 1 second between retries
+    )
+except Exception as e:
+    print(f"Failed after retries: {e}")
+```
+
+## Advanced: Proxy Rotation
+
+All fetchers support the `ProxyRotator` for automatic proxy rotation:
+
+```python
+from scrapling.fetchers import Fetcher, ProxyRotator
+
+# Create proxy pool
+rotator = ProxyRotator([
+    'http://proxy1.com:8080',
+    'http://proxy2.com:8080',
+    {'server': 'http://proxy3.com:8080', 'username': 'user', 'password': 'pass'}
+])
+
+# Use with session (see Sessions concept)
+from scrapling.fetchers import FetcherSession
+
+with FetcherSession(proxy_rotator=rotator) as session:
+    # Automatically rotates proxies on failure
+    response1 = session.get('https://httpbin.org/ip')
+    response2 = session.get('https://httpbin.org/ip')
+```
+
+## Implementation Details
+
+### Fetcher Hierarchy
+
+```python
+# From scrapling/fetchers/requests.py
+from scrapling.engines.static import FetcherClient
+from scrapling.engines.toolbelt.custom import BaseFetcher
+
+__FetcherClientInstance__ = FetcherClient()
+
+class Fetcher(BaseFetcher):
+    get = __FetcherClientInstance__.get
+    post = __FetcherClientInstance__.post
+    put = __FetcherClientInstance__.put
+    delete = __FetcherClientInstance__.delete
+```
+
+### DynamicFetcher Internals
+
+```python
+# From scrapling/fetchers/chrome.py
+from scrapling.engines._browsers._controllers import DynamicSession
+
+class DynamicFetcher(BaseFetcher):
+    @classmethod
+    def fetch(cls, url: str, **kwargs):
+        # Launches browser session for single request
+        with DynamicSession(**kwargs) as session:
+            return session.fetch(url)
+```
+
+### StealthyFetcher Internals
+
+```python
+# From scrapling/fetchers/stealth_chrome.py  
+from scrapling.engines._browsers._stealth import StealthySession
+
+class StealthyFetcher(BaseFetcher):
+    @classmethod
+    def fetch(cls, url: str, **kwargs):
+        # Uses stealth-enhanced browser session
+        with StealthySession(**kwargs) as engine:
+            return engine.fetch(url)
+```
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Parsing" href="/concepts/parsing">
+    Learn to extract data from responses
+  </Card>
+  <Card title="Sessions" href="/concepts/sessions">
+    Use sessions for persistent connections
+  </Card>
+  <Card title="API Reference" href="/api/fetcher">
+    Complete fetcher API documentation
+  </Card>
+</CardGroup>

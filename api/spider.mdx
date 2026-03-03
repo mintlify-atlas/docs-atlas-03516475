@@ -1,0 +1,430 @@
+---
+title: Spider
+description: Abstract base class for creating web spiders in Scrapling
+---
+
+The `Spider` class is an abstract base class for creating web spiders. It provides the core framework for asynchronous web crawling with support for pause/resume, session management, and flexible concurrency control.
+
+## Class Definition
+
+```python
+from scrapling.spiders import Spider
+
+class Spider(ABC):
+    """An abstract base class for creating web spiders."""
+```
+
+## Class Attributes
+
+<ParamField path="name" type="str | None" default="None" required>
+  The name of the spider. Must be set in subclasses.
+</ParamField>
+
+<ParamField path="start_urls" type="list[str]" default="[]">
+  List of URLs where the spider will begin crawling. Used by default `start_requests()` implementation.
+</ParamField>
+
+<ParamField path="allowed_domains" type="Set[str]" default="set()">
+  Set of allowed domains. If set, only requests to these domains will be processed. Supports domain matching (e.g., "example.com" matches "sub.example.com").
+</ParamField>
+
+### Concurrency Settings
+
+<ParamField path="concurrent_requests" type="int" default="4">
+  Maximum number of concurrent requests globally.
+</ParamField>
+
+<ParamField path="concurrent_requests_per_domain" type="int" default="0">
+  Maximum number of concurrent requests per domain. If 0, only global limit applies.
+</ParamField>
+
+<ParamField path="download_delay" type="float" default="0.0">
+  Delay in seconds between requests to the same domain.
+</ParamField>
+
+<ParamField path="max_blocked_retries" type="int" default="3">
+  Maximum number of retry attempts for blocked requests.
+</ParamField>
+
+### Fingerprint Adjustments
+
+<ParamField path="fp_include_kwargs" type="bool" default="False">
+  Include session kwargs in request fingerprinting for deduplication.
+</ParamField>
+
+<ParamField path="fp_keep_fragments" type="bool" default="False">
+  Keep URL fragments when generating request fingerprints.
+</ParamField>
+
+<ParamField path="fp_include_headers" type="bool" default="False">
+  Include headers in request fingerprinting.
+</ParamField>
+
+### Logging Settings
+
+<ParamField path="logging_level" type="int" default="logging.DEBUG">
+  Logging level for the spider logger.
+</ParamField>
+
+<ParamField path="logging_format" type="str" default="[%(asctime)s]:({spider_name}) %(levelname)s: %(message)s">
+  Log message format. `{spider_name}` will be replaced with the spider's name.
+</ParamField>
+
+<ParamField path="logging_date_format" type="str" default="%Y-%m-%d %H:%M:%S">
+  Date format for log messages.
+</ParamField>
+
+<ParamField path="log_file" type="str | None" default="None">
+  Optional path to a log file. If set, logs will be written to this file.
+</ParamField>
+
+## Constructor
+
+```python
+def __init__(
+    self,
+    crawldir: Optional[Union[str, Path, AsyncPath]] = None,
+    interval: float = 300.0
+)
+```
+
+<ParamField path="crawldir" type="str | Path | AsyncPath | None" default="None">
+  Directory for checkpoint files. If provided, enables pause/resume functionality.
+</ParamField>
+
+<ParamField path="interval" type="float" default="300.0">
+  Seconds between periodic checkpoint saves (default 5 minutes).
+</ParamField>
+
+## Abstract Methods
+
+### parse
+
+```python
+async def parse(
+    self,
+    response: Response
+) -> AsyncGenerator[Dict[str, Any] | Request | None, None]
+```
+
+Default callback for processing responses. Must be implemented by subclasses.
+
+<ParamField path="response" type="Response" required>
+  The response object to parse.
+</ParamField>
+
+**Yields:** Dictionary items (scraped data), Request objects (new requests), or None
+
+**Example:**
+```python
+class MySpider(Spider):
+    async def parse(self, response):
+        # Extract data
+        yield {
+            "title": response.css("h1::text").get(),
+            "url": response.url
+        }
+        
+        # Follow links
+        for link in response.css("a::attr(href)").getall():
+            yield Request(link, callback=self.parse_detail)
+```
+
+## Methods
+
+### start_requests
+
+```python
+async def start_requests(self) -> AsyncGenerator[Request, None]
+```
+
+Generate initial requests to start the crawl. By default, creates Request objects for each URL in `start_urls`. Override for custom initial request logic.
+
+**Yields:** Request objects
+
+**Example:**
+```python
+async def start_requests(self):
+    for url in self.start_urls:
+        yield Request(
+            url,
+            sid="custom_session",
+            headers={"Custom-Header": "value"}
+        )
+```
+
+### start
+
+```python
+def start(
+    self,
+    use_uvloop: bool = False,
+    **backend_options: Any
+) -> CrawlResult
+```
+
+Run the spider synchronously and return results. This is the main entry point for running a spider.
+
+<ParamField path="use_uvloop" type="bool" default="False">
+  Whether to use the faster uvloop/winloop event loop implementation, if available.
+</ParamField>
+
+<ParamField path="backend_options" type="Any">
+  Asyncio backend options to pass to `anyio.run()`.
+</ParamField>
+
+**Returns:** `CrawlResult` object containing stats, items, and pause state
+
+**Example:**
+```python
+spider = MySpider()
+result = spider.start(use_uvloop=True)
+
+print(f"Scraped {len(result.items)} items")
+print(f"Stats: {result.stats.to_dict()}")
+```
+
+<Note>
+  Pressing Ctrl+C initiates graceful shutdown. Pressing it again forces immediate stop.
+  If `crawldir` is set, a checkpoint is saved on graceful shutdown for later resumption.
+</Note>
+
+### stream
+
+```python
+async def stream(self) -> AsyncGenerator[Dict[str, Any], None]
+```
+
+Stream items as they're scraped. Ideal for long-running spiders or building applications on top of spiders. Must be called from an async context.
+
+**Yields:** Scraped items (dictionaries)
+
+**Example:**
+```python
+import anyio
+
+async def main():
+    spider = MySpider()
+    async for item in spider.stream():
+        print(f"Scraped: {item}")
+        print(f"Current stats: {spider.stats.to_dict()}")
+
+anyio.run(main)
+```
+
+<Warning>
+  SIGINT handling for pause/resume is not available in stream mode.
+</Warning>
+
+### pause
+
+```python
+def pause(self)
+```
+
+Request graceful shutdown of the crawling process. Active tasks will complete before stopping.
+
+**Raises:** `RuntimeError` if no active crawl is running
+
+### configure_sessions
+
+```python
+def configure_sessions(self, manager: SessionManager) -> None
+```
+
+Configure sessions for this spider. Override this method to add custom sessions. The first session added becomes the default for `start_requests()` unless specified otherwise.
+
+<ParamField path="manager" type="SessionManager" required>
+  SessionManager instance to configure.
+</ParamField>
+
+**Example:**
+```python
+def configure_sessions(self, manager):
+    from scrapling.fetchers import FetcherSession, AsyncStealthySession
+    
+    manager.add("default", FetcherSession())
+    manager.add("stealth", AsyncStealthySession(), lazy=True)
+```
+
+## Hook Methods
+
+These methods can be overridden to customize spider behavior:
+
+### on_start
+
+```python
+async def on_start(self, resuming: bool = False) -> None
+```
+
+Called before crawling starts. Override for setup logic.
+
+<ParamField path="resuming" type="bool" default="False">
+  True if the spider is resuming from a checkpoint.
+</ParamField>
+
+### on_close
+
+```python
+async def on_close(self) -> None
+```
+
+Called after crawling finishes. Override for cleanup logic.
+
+### on_error
+
+```python
+async def on_error(self, request: Request, error: Exception) -> None
+```
+
+Handle request errors for all spider requests. Override for custom error handling.
+
+<ParamField path="request" type="Request" required>
+  The request that caused the error.
+</ParamField>
+
+<ParamField path="error" type="Exception" required>
+  The exception that was raised.
+</ParamField>
+
+### on_scraped_item
+
+```python
+async def on_scraped_item(
+    self,
+    item: Dict[str, Any]
+) -> Dict[str, Any] | None
+```
+
+Process scraped items before they're stored. Return `None` to drop the item silently.
+
+<ParamField path="item" type="Dict[str, Any]" required>
+  The scraped item to process.
+</ParamField>
+
+**Returns:** Processed item or None to drop it
+
+**Example:**
+```python
+async def on_scraped_item(self, item):
+    # Validate required fields
+    if not item.get("title"):
+        return None  # Drop items without title
+    
+    # Add timestamp
+    item["scraped_at"] = datetime.now().isoformat()
+    return item
+```
+
+### is_blocked
+
+```python
+async def is_blocked(self, response: Response) -> bool
+```
+
+Check if the response is blocked. Override for custom detection logic.
+
+<ParamField path="response" type="Response" required>
+  The response to check.
+</ParamField>
+
+**Returns:** True if blocked, False otherwise
+
+**Default implementation:** Returns True for status codes in `{401, 403, 407, 429, 444, 500, 502, 503, 504}`
+
+### retry_blocked_request
+
+```python
+async def retry_blocked_request(
+    self,
+    request: Request,
+    response: Response
+) -> Request
+```
+
+Prepare a blocked request before retrying. Override to modify the request (e.g., rotate proxies, change headers).
+
+<ParamField path="request" type="Request" required>
+  The request to retry (already copied with incremented retry count).
+</ParamField>
+
+<ParamField path="response" type="Response" required>
+  The blocked response.
+</ParamField>
+
+**Returns:** Modified request for retry
+
+**Example:**
+```python
+async def retry_blocked_request(self, request, response):
+    # Rotate to next proxy
+    request._session_kwargs["proxy"] = self.proxy_rotator.get_proxy()
+    return request
+```
+
+## Properties
+
+### stats
+
+```python
+@property
+def stats(self) -> CrawlStats
+```
+
+Access current crawl statistics. Only available during active crawl (inside `stream()` iteration).
+
+**Returns:** `CrawlStats` object
+
+**Raises:** `RuntimeError` if no active crawl is running
+
+## Complete Example
+
+```python
+from scrapling.spiders import Spider, Request
+from scrapling.fetchers import FetcherSession
+
+class QuotesSpider(Spider):
+    name = "quotes"
+    start_urls = ["https://quotes.toscrape.com"]
+    
+    # Concurrency settings
+    concurrent_requests = 10
+    download_delay = 0.5
+    
+    def configure_sessions(self, manager):
+        manager.add("default", FetcherSession())
+    
+    async def parse(self, response):
+        # Extract quotes
+        for quote in response.css(".quote"):
+            yield {
+                "text": quote.css(".text::text").get(),
+                "author": quote.css(".author::text").get(),
+            }
+        
+        # Follow pagination
+        next_page = response.css(".next a::attr(href)").get()
+        if next_page:
+            yield Request(response.urljoin(next_page))
+    
+    async def on_scraped_item(self, item):
+        # Add custom processing
+        item["quote_length"] = len(item["text"])
+        return item
+
+# Run the spider
+if __name__ == "__main__":
+    spider = QuotesSpider(crawldir="./checkpoints")
+    result = spider.start()
+    
+    # Save results
+    result.items.to_json("quotes.json", indent=True)
+    print(f"Scraped {len(result)} quotes")
+```
+
+## See Also
+
+- [Request](/api/request) - Creating and configuring requests
+- [CrawlerEngine](/api/crawler-engine) - Understanding the crawl engine
+- [SessionManager](/api/session-manager) - Managing multiple sessions
+- [CrawlResult](/api/crawl-result) - Working with crawl results

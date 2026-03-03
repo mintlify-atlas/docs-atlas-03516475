@@ -1,0 +1,662 @@
+---
+title: 'Parsing System'
+description: 'Deep dive into Scrapling HTML/XML parsing and data extraction'
+---
+
+## Overview
+
+Scrapling's parsing system is built on the `Selector` class, which provides a powerful and intuitive API for navigating and extracting data from HTML and XML documents. It's powered by `lxml` for high performance.
+
+<CardGroup cols={3}>
+  <Card title="Selectors" icon="crosshairs">
+    CSS, XPath, and flexible find methods
+  </Card>
+  <Card title="Navigation" icon="sitemap">
+    Tree traversal and element relationships
+  </Card>
+  <Card title="Extraction" icon="file-export">
+    Text, attributes, and structured data
+  </Card>
+</CardGroup>
+
+## Selector Class
+
+### Creating Selectors
+
+```python
+from scrapling import Selector
+
+# From HTML string
+html = '<div class="product"><h2>Item</h2><span>$99</span></div>'
+selector = Selector(html)
+
+# From bytes
+html_bytes = b'<html><body>Content</body></html>'
+selector = Selector(html_bytes, encoding='utf-8')
+
+# From file
+with open('page.html', 'r') as f:
+    selector = Selector(f.read())
+
+# From fetcher response (Response extends Selector)
+from scrapling import Fetcher
+response = Fetcher.fetch('https://example.com')
+# response is already a Selector!
+title = response.css('title::text').get()
+```
+
+### Configuration Options
+
+```python
+selector = Selector(
+    html,
+    url='https://example.com',      # Base URL for relative links
+    encoding='utf-8',                # Character encoding
+    huge_tree=True,                  # Handle large documents (default: True)
+    keep_comments=False,             # Preserve HTML comments (default: False)
+    keep_cdata=False,                # Preserve CDATA sections (default: False)
+    adaptive=False                   # Enable adaptive relocation (default: False)
+)
+```
+
+## Selection Methods
+
+### CSS Selectors
+
+The most intuitive way to select elements:
+
+```python
+selector = Selector(html)
+
+# Basic selectors
+title = selector.css('h1').get()
+products = selector.css('.product')
+link = selector.css('#main-link')
+
+# Combinators
+items = selector.css('div.products > .item')
+headings = selector.css('h1, h2, h3')
+first = selector.css('li:first-child')
+
+# Pseudo-elements for text/attributes
+text = selector.css('h1::text').get()
+link_url = selector.css('a::attr(href)').get()
+
+# Complex selectors
+active_products = selector.css('div.product:not(.disabled)')
+third_item = selector.css('li:nth-child(3)')
+```
+
+### XPath Selectors
+
+For more complex queries:
+
+```python
+# Basic XPath
+title = selector.xpath('//h1/text()').get()
+products = selector.xpath('//div[@class="product"]')
+
+# Attribute selection
+links = selector.xpath('//a[@href]')
+active = selector.xpath('//div[@data-active="true"]')
+
+# Text matching
+search = selector.xpath('//div[contains(text(), "search term")]')
+exact = selector.xpath('//span[text()="Exact Match"]')
+
+# Complex queries
+expensive = selector.xpath('//div[@class="product"][.//span[@class="price"] > 100]')
+
+# Axes
+parent = selector.xpath('//div[@id="child"]/..')
+sibling = selector.xpath('//h2/following-sibling::p')
+ancestor = selector.xpath('//span/ancestor::div[@class="container"]')
+```
+
+### Find Methods
+
+Python-style element searching:
+
+```python
+# Find by tag
+divs = selector.find_all('div')
+first_div = selector.find('div')
+
+# Find by attributes
+products = selector.find_all('div', class_='product')
+link = selector.find('a', href='https://example.com')
+button = selector.find('button', id='submit')
+
+# Multiple attributes
+active_product = selector.find('div', class_='product', data_active='true')
+
+# Multiple tag names
+headings = selector.find_all(['h1', 'h2', 'h3'])
+
+# Attribute dictionary
+elements = selector.find_all({'class': 'item', 'data-type': 'product'})
+
+# Note: Use class_ and for_ for Python reserved words
+items = selector.find_all('label', for_='input-id')
+elements = selector.find_all('span', class_='highlight')
+```
+
+### Find by Text
+
+Search elements by their text content:
+
+```python
+# Exact match
+element = selector.find_by_text('Exact Text', first_match=True)
+
+# Partial match
+elements = selector.find_by_text(
+    'partial',
+    partial=True,          # Contains search
+    first_match=False      # Return all matches
+)
+
+# Case sensitivity
+element = selector.find_by_text(
+    'TEXT',
+    case_sensitive=False   # Ignore case
+)
+
+# Clean matching (ignore whitespace)
+element = selector.find_by_text(
+    'some text',
+    clean_match=True       # Normalize whitespace
+)
+```
+
+### Find by Regex
+
+Search using regular expressions:
+
+```python
+import re
+
+# Find price elements
+prices = selector.find_by_regex(
+    r'\$\d+\.\d{2}',
+    first_match=False
+)
+
+# With compiled pattern
+pattern = re.compile(r'\d{4}-\d{2}-\d{2}')
+dates = selector.find_by_regex(pattern)
+
+# Case insensitive
+elements = selector.find_by_regex(
+    r'error',
+    case_sensitive=False
+)
+```
+
+### Find Similar Elements
+
+Find elements with similar structure (inspired by AutoScraper):
+
+```python
+# Find first product
+first_product = selector.css('.product').first()
+
+# Find all similar products
+all_products = first_product.find_similar(
+    similarity_threshold=0.2,           # Match threshold (0-1)
+    ignore_attributes=['href', 'src'],  # Ignore these attributes
+    match_text=False                    # Don't match text content
+)
+
+# Useful for finding repeated patterns
+# Works by matching: same tag, same depth, same parent, similar attributes
+```
+
+## Data Extraction
+
+### Text Extraction
+
+```python
+selector = Selector('<div>Hello <span>World</span></div>')
+
+# Direct text (only immediate text node)
+text = selector.css('div').text
+print(text)  # "Hello "
+
+# All text (recursive)
+all_text = selector.css('div').get_all_text()
+print(all_text)  # "Hello World"
+
+# Custom separator
+text = selector.get_all_text(
+    separator=' | ',      # Join with custom separator
+    strip=True,          # Strip whitespace from each text node
+    ignore_tags=('script', 'style'),  # Skip these tags
+    valid_values=True    # Ignore empty/whitespace-only text
+)
+
+# Single element text
+title = selector.css('h1::text').get()        # First match
+titles = selector.css('h1::text').getall()    # All matches
+```
+
+### Attribute Extraction
+
+```python
+# Single attribute
+href = selector.css('a::attr(href)').get()
+src = selector.xpath('//img/@src').get()
+
+# Direct access
+link = selector.css('a').first()
+url = link['href']           # Same as link.attrib['href']
+alt = link.attrib.get('alt', 'default')  # With default
+
+# Check attribute existence
+if 'data-id' in link:
+    data_id = link['data-id']
+
+# All attributes
+attributes = link.attrib  # AttributesHandler dict
+for key, value in attributes.items():
+    print(f"{key}: {value}")
+```
+
+### HTML Extraction
+
+```python
+element = selector.css('div.content').first()
+
+# Inner HTML
+inner = element.html_content
+print(inner)  # HTML inside the element
+
+# Prettified HTML
+pretty = element.prettify()
+print(pretty)  # Formatted with indentation
+
+# Outer HTML (element itself)
+outer = element.get()
+print(outer)  # Complete element HTML
+
+# Raw body (for Response objects)
+from scrapling import Fetcher
+response = Fetcher.fetch('https://example.com/image.png')
+binary_data = response.body  # bytes
+```
+
+### JSON Extraction
+
+```python
+# From JSON response
+from scrapling import Fetcher
+response = Fetcher.fetch('https://api.example.com/data')
+data = response.json()  # Parsed JSON
+
+# From JSON in HTML
+json_element = selector.css('script[type="application/json"]::text').get()
+data = json_element.json()
+
+# From text handler
+import json
+text = selector.css('.data::text').get()
+data = text.json()  # TextHandler has json() method
+```
+
+## Tree Navigation
+
+### Parent and Ancestors
+
+```python
+element = selector.css('.child').first()
+
+# Direct parent
+parent = element.parent
+
+# All ancestors (bottom to top)
+for ancestor in element.iterancestors():
+    print(ancestor.tag)
+
+# Path to root
+path = element.path  # Selectors list from root to element
+
+# Find specific ancestor
+container = element.find_ancestor(
+    lambda el: el.has_class('container')
+)
+```
+
+### Children and Descendants
+
+```python
+container = selector.css('.container').first()
+
+# Direct children only
+children = container.children
+for child in children:
+    print(child.tag)
+
+# All descendants
+all_elements = container.below_elements
+
+# Check if element has children
+if container.children:
+    first_child = container.children[0]
+```
+
+### Siblings
+
+```python
+element = selector.css('.item').first()
+
+# Next sibling
+next_el = element.next
+
+# Previous sibling
+prev_el = element.previous
+
+# All siblings
+all_siblings = element.siblings
+```
+
+## Selectors Container
+
+The `Selectors` class is a list of `Selector` objects with additional methods:
+
+### Basic Operations
+
+```python
+# Get multiple elements
+products = selector.css('.product')  # Returns Selectors
+
+# List operations
+first = products[0]           # First product
+last = products[-1]           # Last product
+slice = products[1:3]         # Slice (returns Selectors)
+count = len(products)         # Count
+
+# Iteration
+for product in products:
+    title = product.css('h2::text').get()
+    print(title)
+
+# List comprehension
+titles = [p.css('h2::text').get() for p in products]
+```
+
+### Extraction Methods
+
+```python
+products = selector.css('.product')
+
+# Get first
+first_product = products.first()  # Same as products[0]
+
+# Get last
+last_product = products.last()   # Same as products[-1]
+
+# Extract from all
+titles = products.css('h2::text').getall()  # All titles
+prices = products.xpath('.//span[@class="price"]/text()').getall()
+```
+
+### Filter and Transform
+
+```python
+products = selector.css('.product')
+
+# Filter by condition
+expensive = products.filter(
+    lambda p: float(p.css('.price::text').get().strip('$')) > 100
+)
+
+# Filter by attribute
+active = products.filter(
+    lambda p: p.attrib.get('data-active') == 'true'
+)
+
+# Chain operations
+results = (selector
+    .css('.product')
+    .filter(lambda p: p.has_class('featured'))
+    .css('h2::text')
+    .getall()
+)
+```
+
+## TextHandler
+
+All text extracted by Scrapling is wrapped in `TextHandler`, which extends Python's `str` with additional methods:
+
+### Basic String Operations
+
+```python
+from scrapling.core.custom_types import TextHandler
+
+text = TextHandler('  Hello World  ')
+
+# All standard string methods work
+print(text.strip())      # "Hello World"
+print(text.lower())      # "  hello world  "
+print(text.split())      # ["Hello", "World"]
+```
+
+### Cleaning
+
+```python
+text = TextHandler('  Hello   \n\t  World  \r\n  ')
+
+# Clean whitespace and consecutive spaces
+cleaned = text.clean()
+print(cleaned)  # "Hello World"
+
+# Sort characters
+sorted_text = text.sort()
+print(sorted_text)  # "  HWdellloor"
+```
+
+### Regular Expressions
+
+```python
+text = TextHandler('Price: $99.99, Discount: $10.00')
+
+# Find all matches
+prices = text.re(r'\$\d+\.\d{2}')
+print(prices)  # ['$99.99', '$10.00']
+
+# First match
+first_price = text.re_first(r'\$\d+\.\d{2}')
+print(first_price)  # '$99.99'
+
+# With default value
+no_match = text.re_first(r'€\d+', default='Not found')
+print(no_match)  # 'Not found'
+
+# Case insensitive
+result = text.re(
+    r'price',
+    case_sensitive=False
+)
+
+# Clean before matching (ignore whitespace)
+result = text.re(
+    r'\d+\.\d+',
+    clean_match=True
+)
+```
+
+### Conversion
+
+```python
+# JSON parsing
+json_text = TextHandler('{"key": "value"}')
+data = json_text.json()
+
+# Dictionary
+text_dict = text.dict()  # Character frequency
+
+# Numeric operations (with number extraction)
+text = TextHandler('Price: $99.99')
+# Custom methods for your use case
+```
+
+## AttributesHandler
+
+Element attributes are wrapped in `AttributesHandler`, a dictionary-like object:
+
+```python
+element = selector.css('a').first()
+attributes = element.attrib  # AttributesHandler
+
+# Dictionary operations
+href = attributes['href']
+href = attributes.get('href', '#')  # With default
+
+# Check existence
+if 'data-id' in attributes:
+    print(attributes['data-id'])
+
+# Iterate
+for key, value in attributes.items():
+    print(f"{key}={value}")
+
+# Keys and values
+keys = attributes.keys()
+values = attributes.values()
+```
+
+## Advanced Features
+
+### Adaptive Element Relocation
+
+Scrapling can save element signatures and relocate them even after page structure changes:
+
+```python
+from scrapling import Selector
+from scrapling.core.storage import SQLiteStorageSystem
+
+# Enable adaptive mode
+selector = Selector(
+    html,
+    adaptive=True,
+    storage=SQLiteStorageSystem,
+    storage_args={'storage_file': 'elements.db', 'url': url}
+)
+
+# First request: save element
+product = selector.css('.product').first()
+if product:
+    selector.save(product, identifier='main-product')
+
+# Later: page structure changed
+new_selector = Selector(new_html, adaptive=True)
+
+# Try to find with new selector (fails)
+product = new_selector.css('.product')  # Empty - selector changed
+
+# Use adaptive to relocate
+product = new_selector.xpath(
+    '//div',  # Generic selector
+    identifier='main-product',
+    adaptive=True,      # Enable relocation
+    auto_save=True,     # Update signature
+    percentage=80       # Minimum match percentage
+)
+# Finds element even with structure changes!
+```
+
+### URL Joining
+
+```python
+response = Fetcher.fetch('https://example.com/page')
+
+# Join relative URLs
+relative_url = response.css('a::attr(href)').get()  # "/products/item"
+full_url = response.urljoin(relative_url)
+print(full_url)  # "https://example.com/products/item"
+```
+
+### Element Properties
+
+```python
+element = selector.css('.product').first()
+
+# Tag name
+print(element.tag)  # "div"
+
+# Has class
+if element.has_class('featured'):
+    print("Featured product")
+
+# Element as string
+html = str(element)  # HTML content
+print(element)       # Pretty representation
+```
+
+## Performance Tips
+
+### Use Specific Selectors
+
+```python
+# Slow: searches entire tree
+all_links = selector.css('a')
+
+# Faster: limit scope
+header_links = selector.css('#header a')
+```
+
+### Cache Results
+
+```python
+# Don't repeat expensive queries
+products = selector.css('.product')  # Query once
+
+for product in products:
+    title = product.css('h2::text').get()
+    price = product.css('.price::text').get()
+```
+
+### Use Direct Methods
+
+```python
+# Slower: CSS pseudo-element
+text = selector.css('h1::text').get()
+
+# Faster: direct access
+heading = selector.css('h1').first()
+text = heading.text
+```
+
+## Error Handling
+
+```python
+try:
+    selector = Selector(html)
+except ValueError as e:
+    print(f"Invalid HTML: {e}")
+
+try:
+    elements = selector.css('invalid::syntax')
+except SelectorSyntaxError as e:
+    print(f"Invalid selector: {e}")
+
+# Safe extraction with defaults
+title = selector.css('h1::text').get() or 'No title'
+price = selector.css('.price::text').get()
+if price:
+    price_value = float(price.strip('$'))
+```
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Sessions" href="/concepts/sessions">
+    Learn about session management
+  </Card>
+  <Card title="API Reference" href="/api/selector">
+    Complete Selector API documentation
+  </Card>
+  <Card title="Examples" href="/tutorials/real-world-examples">
+    Real-world parsing examples
+  </Card>
+</CardGroup>

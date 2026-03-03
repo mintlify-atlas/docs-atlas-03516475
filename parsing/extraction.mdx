@@ -1,0 +1,586 @@
+---
+title: 'Data Extraction'
+description: 'Extract text, HTML, attributes, and structured data from elements'
+---
+
+## Overview
+
+Scrapling provides powerful methods to extract data from HTML elements. Whether you need text content, HTML markup, attributes, or structured data, Scrapling has you covered.
+
+## Basic Extraction
+
+### get()
+
+Serialize an element to a string.
+
+```python
+def get() -> TextHandler
+```
+
+For text nodes, returns the text value. For HTML elements, returns the outer HTML.
+
+```python
+from scrapling import Fetcher
+
+page = Fetcher.fetch('https://example.com')
+
+# Get single element content
+header = page.css('h1').first
+if header:
+    content = header.get()
+    print(content)  # Returns HTML: <h1>Title</h1>
+```
+
+### getall()
+
+Extract data from all matched elements.
+
+```python
+def getall() -> TextHandlers
+```
+
+**For Selector (single element):** Returns a single-element list containing the element's serialized string.
+
+**For Selectors (multiple elements):** Serializes all elements and returns as a TextHandlers list.
+
+<CodeGroup>
+```python Single Element
+# Single element returns list with one item
+element = page.css('h1').first
+result = element.getall()
+print(result)  # ['<h1>Title</h1>']
+```
+
+```python Multiple Elements
+# Multiple elements returns list of all
+links = page.css('a')
+all_links = links.getall()
+
+for link_html in all_links:
+    print(link_html)
+```
+</CodeGroup>
+
+### extract() and extract_first()
+
+Aliases for backward compatibility with other scraping libraries.
+
+```python
+extract = getall
+extract_first = get
+```
+
+```python
+# These are equivalent
+text1 = page.css('p').extract_first()
+text2 = page.css('p').get()
+
+# These are equivalent
+texts1 = page.css('p').extract()
+texts2 = page.css('p').getall()
+```
+
+## Text Extraction
+
+### text
+
+Get the direct text content of an element.
+
+```python
+@property
+def text() -> TextHandler
+```
+
+Returns the text content of the element. For text nodes, returns the text value. For HTML elements, returns the element's direct text (not including children).
+
+```python
+# Get text content
+title = page.css('h1').first
+if title:
+    print(title.text)  # Returns: "Title" (not <h1>Title</h1>)
+
+# Text is a TextHandler with useful methods
+price_text = page.css('.price').first.text
+price_clean = price_text.strip().replace('$', '')
+price_value = float(price_clean)
+```
+
+### get_all_text()
+
+Get all text from an element and its descendants.
+
+```python
+def get_all_text(
+    separator: str = "\n",
+    strip: bool = False,
+    ignore_tags: Tuple = ("script", "style"),
+    valid_values: bool = True,
+) -> TextHandler
+```
+
+<ParamField path="separator" type="str" default="\n">
+  Strings will be concatenated using this separator
+</ParamField>
+
+<ParamField path="strip" type="bool" default="false">
+  If True, strings will be stripped before being concatenated
+</ParamField>
+
+<ParamField path="ignore_tags" type="Tuple" default="('script', 'style')">
+  A tuple of tag names to ignore when extracting text
+</ParamField>
+
+<ParamField path="valid_values" type="bool" default="true">
+  If enabled, elements with text-content that is empty or only whitespaces will be ignored
+</ParamField>
+
+<CodeGroup>
+```python Basic Usage
+# Get all text from a container
+article = page.css('article').first
+full_text = article.get_all_text()
+print(full_text)
+```
+
+```python Custom Separator
+# Get text separated by spaces
+container = page.css('.info').first
+text = container.get_all_text(separator=" ", strip=True)
+```
+
+```python Ignore Additional Tags
+# Ignore specific tags
+content = page.css('.content').first
+clean_text = content.get_all_text(
+    ignore_tags=("script", "style", "nav", "footer")
+)
+```
+</CodeGroup>
+
+## HTML Extraction
+
+### html_content
+
+Get the inner HTML of an element.
+
+```python
+@property
+def html_content() -> TextHandler
+```
+
+Returns the inner HTML code of the element.
+
+```python
+# Get inner HTML
+container = page.css('.container').first
+inner_html = container.html_content
+print(inner_html)  # HTML inside the container
+```
+
+### prettify()
+
+Get a formatted, prettified version of the HTML.
+
+```python
+def prettify() -> TextHandler
+```
+
+Returns a prettified version of the element's inner HTML code with proper indentation.
+
+```python
+# Get prettified HTML
+element = page.css('div.complex').first
+pretty_html = element.prettify()
+print(pretty_html)
+# Output:
+# <div class="complex">
+#   <p>Text</p>
+#   <span>More text</span>
+# </div>
+```
+
+### body
+
+Get the raw body without processing.
+
+```python
+@property
+def body() -> str | bytes
+```
+
+Returns the raw body of the current Selector without any processing. Useful for binary and non-HTML requests.
+
+```python
+# Get raw body
+raw_content = page.body
+```
+
+## Attribute Extraction
+
+### attrib
+
+Access element attributes.
+
+```python
+@property
+def attrib() -> AttributesHandler
+```
+
+Returns an AttributesHandler containing all attributes of the element.
+
+<CodeGroup>
+```python Get Attributes
+# Get specific attribute
+link = page.css('a').first
+href = link.attrib.get('href')
+class_name = link.attrib.get('class')
+
+# Check if attribute exists
+if 'data-id' in link.attrib:
+    data_id = link['data-id']
+```
+
+```python Dictionary Access
+# Use dictionary-style access
+link = page.css('a').first
+
+# Using square brackets (raises KeyError if not found)
+href = link['href']
+
+# Using .get() (returns None if not found)
+title = link.attrib.get('title', 'No title')
+```
+
+```python Iterate Attributes
+# Iterate over all attributes
+element = page.css('img').first
+for attr_name, attr_value in element.attrib.items():
+    print(f"{attr_name}: {attr_value}")
+```
+</CodeGroup>
+
+### Element Access with []
+
+Direct attribute access using bracket notation.
+
+```python
+def __getitem__(key: str) -> TextHandler
+```
+
+```python
+# Direct access
+link = page.css('a').first
+href = link['href']
+class_name = link['class']
+
+# Raises KeyError if attribute doesn't exist
+try:
+    missing = link['data-missing']
+except KeyError:
+    print("Attribute not found")
+```
+
+### Check Attribute Existence
+
+```python
+def __contains__(key: str) -> bool
+```
+
+```python
+# Check if attribute exists
+link = page.css('a').first
+
+if 'href' in link:
+    print(f"Link points to: {link['href']}")
+
+if 'target' in link:
+    print(f"Opens in: {link['target']}")
+else:
+    print("Opens in same window")
+```
+
+## Tag Information
+
+### tag
+
+Get the tag name of an element.
+
+```python
+@property
+def tag() -> str
+```
+
+```python
+# Get tag name
+element = page.css('.content').first
+print(element.tag)  # e.g., "div"
+
+# For text nodes
+text_node = page.xpath('//p/text()').first
+print(text_node.tag)  # "#text"
+```
+
+### has_class()
+
+Check if an element has a specific class.
+
+```python
+def has_class(class_name: str) -> bool
+```
+
+<ParamField path="class_name" type="str" required>
+  The class name to check for
+</ParamField>
+
+```python
+# Check for class
+element = page.css('.container').first
+
+if element.has_class('active'):
+    print("Element is active")
+
+if element.has_class('container'):
+    print("Element is a container")
+```
+
+## Regex Extraction
+
+Extract data using regular expressions.
+
+### re()
+
+Apply regex to element text and return all matches.
+
+```python
+def re(
+    regex: str | Pattern[str],
+    replace_entities: bool = True,
+    clean_match: bool = False,
+    case_sensitive: bool = True,
+) -> TextHandlers
+```
+
+<ParamField path="regex" type="str | Pattern[str]" required>
+  Can be either a compiled regular expression or a string
+</ParamField>
+
+<ParamField path="replace_entities" type="bool" default="true">
+  If enabled, character entity references are replaced by their corresponding character
+</ParamField>
+
+<ParamField path="clean_match" type="bool" default="false">
+  If enabled, ignores all whitespaces and consecutive spaces while matching
+</ParamField>
+
+<ParamField path="case_sensitive" type="bool" default="true">
+  If disabled, the function will ignore letter case while matching
+</ParamField>
+
+<CodeGroup>
+```python Extract Prices
+import re
+
+# Extract all prices
+page_text = page.get_all_text()
+prices = page_text.re(r'\$\d+\.\d{2}')
+print(prices)  # ['$19.99', '$29.99', '$9.99']
+```
+
+```python Extract Emails
+# Extract email addresses
+email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+emails = page.get_all_text().re(email_pattern)
+```
+
+```python Case Insensitive
+# Case-insensitive matching
+keywords = page.get_all_text().re(
+    r'important|urgent|critical',
+    case_sensitive=False
+)
+```
+</CodeGroup>
+
+### re_first()
+
+Apply regex and return the first match.
+
+```python
+def re_first(
+    regex: str | Pattern[str],
+    default=None,
+    replace_entities: bool = True,
+    clean_match: bool = False,
+    case_sensitive: bool = True,
+) -> TextHandler
+```
+
+<ParamField path="default" type="Any" default="None">
+  The default value to be returned if there is no match
+</ParamField>
+
+```python
+import re
+
+# Get first price or default
+price = page.get_all_text().re_first(r'\$\d+\.\d{2}', default='$0.00')
+
+# Extract product code
+code = page.css('.product-info').first.text.re_first(
+    r'SKU: ([A-Z0-9-]+)',
+    default='N/A'
+)
+```
+
+## JSON Extraction
+
+Extract and parse JSON data.
+
+### json()
+
+Parse element content as JSON.
+
+```python
+def json() -> Dict
+```
+
+Returns a parsed JSON response if the content is valid JSON, otherwise raises an error.
+
+<CodeGroup>
+```python Parse JSON Response
+# Parse JSON from API response
+response = Fetcher.fetch('https://api.example.com/data')
+data = response.json()
+
+print(data['items'])
+```
+
+```python Extract JSON from Script Tag
+# Extract JSON from script tag
+script = page.css('script[type="application/json"]').first
+if script:
+    config = script.json()
+    print(config['settings'])
+```
+
+```python Parse Inline JSON
+# Parse JSON from data attribute
+element = page.css('[data-config]').first
+if element:
+    json_str = element['data-config']
+    # Would need to use json.loads() for attribute values
+    import json
+    config = json.loads(json_str)
+```
+</CodeGroup>
+
+## URL Handling
+
+### urljoin()
+
+Join relative URLs with the page's base URL.
+
+```python
+def urljoin(relative_url: str) -> str
+```
+
+<ParamField path="relative_url" type="str" required>
+  The relative URL to join with the page's URL
+</ParamField>
+
+```python
+# Convert relative URLs to absolute
+links = page.css('a')
+
+for link in links:
+    relative_href = link.attrib.get('href', '')
+    absolute_url = link.urljoin(relative_href)
+    print(absolute_url)
+
+# Example:
+# page.url = 'https://example.com/products/'
+# relative = '../about'
+# result = 'https://example.com/about'
+```
+
+## Practical Examples
+
+### Extract Product Information
+
+```python
+# Extract structured product data
+products = []
+
+for item in page.css('.product-card'):
+    product = {
+        'name': item.css('.product-name').first.text.strip(),
+        'price': item.css('.price').first.text.re_first(r'\d+\.\d{2}'),
+        'image': item.css('img').first['src'],
+        'url': item.urljoin(item.css('a').first['href']),
+        'in_stock': item.has_class('in-stock'),
+        'rating': float(item.css('[data-rating]').first['data-rating'])
+    }
+    products.append(product)
+
+print(f"Found {len(products)} products")
+```
+
+### Extract Article Content
+
+```python
+# Extract article with metadata
+article = page.css('article').first
+
+if article:
+    data = {
+        'title': article.css('h1').first.text.strip(),
+        'author': article.css('.author').first.text.strip(),
+        'date': article.css('time').first['datetime'],
+        'content': article.css('.content').first.get_all_text(
+            separator='\n\n',
+            strip=True,
+            ignore_tags=('script', 'style', 'aside')
+        ),
+        'tags': [tag.text for tag in article.css('.tag')],
+        'image_url': article.css('img').first['src'] if article.css('img') else None
+    }
+```
+
+### Extract Table Data
+
+```python
+# Extract data from HTML table
+table = page.css('table.data-table').first
+
+if table:
+    headers = [th.text.strip() for th in table.css('thead th')]
+    
+    rows = []
+    for tr in table.css('tbody tr'):
+        row = {}
+        cells = tr.css('td')
+        for i, cell in enumerate(cells):
+            header = headers[i] if i < len(headers) else f'column_{i}'
+            row[header] = cell.text.strip()
+        rows.append(row)
+    
+    print(f"Extracted {len(rows)} rows")
+```
+
+### Extract Contact Information
+
+```python
+import re
+
+# Extract various contact information
+contact_section = page.css('.contact-info').first
+
+if contact_section:
+    text = contact_section.get_all_text()
+    
+    contact = {
+        'emails': text.re(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'),
+        'phones': text.re(r'\+?\d[\d\s\-\(\)]{8,}\d'),
+        'address': contact_section.css('.address').first.text if contact_section.css('.address') else None,
+    }
+```

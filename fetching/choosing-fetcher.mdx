@@ -1,0 +1,151 @@
+---
+title: Choosing the Right Fetcher
+description: Guide to selecting the appropriate fetcher for your web scraping needs
+---
+
+Scrapling provides three main fetcher types, each designed for specific use cases. Understanding their capabilities will help you choose the right tool for your scraping task.
+
+## Overview
+
+| Fetcher | Speed | Stealth | Use Case |
+|---------|-------|---------|----------|
+| **Fetcher** | Fastest | Medium | Static websites, APIs |
+| **StealthyFetcher** | Medium | Highest | Anti-bot bypass, Cloudflare |
+| **DynamicFetcher** | Slower | Low | JavaScript-heavy sites |
+
+## Fetcher (HTTP Requests)
+
+**Best for:** Fast HTTP requests to static websites or APIs
+
+```python
+from scrapling.fetchers import Fetcher
+
+page = Fetcher.get('https://quotes.toscrape.com/')
+quotes = page.css('.quote .text::text').getall()
+```
+
+**Features:**
+- Built on `curl_cffi` for fast HTTP/1.1, HTTP/2, and HTTP/3 support
+- TLS fingerprint impersonation (mimics real browsers)
+- Automatic header generation for stealth
+- Supports GET, POST, PUT, DELETE methods
+- Lowest resource usage
+
+**When to use:**
+- Scraping static HTML pages
+- Making API requests
+- Sites without heavy JavaScript or anti-bot protection
+- When speed is critical
+
+## StealthyFetcher (Anti-Bot Bypass)
+
+**Best for:** Bypassing anti-bot systems like Cloudflare Turnstile
+
+```python
+from scrapling.fetchers import StealthyFetcher
+
+# Bypass Cloudflare automatically
+page = StealthyFetcher.fetch(
+    'https://nopecha.com/demo/cloudflare',
+    headless=True,
+    solve_cloudflare=True
+)
+data = page.css('#padded_content a').getall()
+```
+
+**Features:**
+- Advanced stealth capabilities with fingerprint spoofing
+- Automatic Cloudflare Turnstile/Interstitial bypass
+- Canvas fingerprinting protection
+- WebRTC leak prevention
+- Passes most online bot detection tests
+- Built on Chromium with stealth patches
+
+**When to use:**
+- Sites protected by Cloudflare Turnstile
+- Anti-bot systems that detect automation
+- When you need maximum stealth
+- Sites with CAPTCHA challenges
+
+## DynamicFetcher (Browser Automation)
+
+**Best for:** Full browser automation with Playwright
+
+```python
+from scrapling.fetchers import DynamicFetcher
+
+page = DynamicFetcher.fetch(
+    'https://quotes.toscrape.com/',
+    headless=True,
+    network_idle=True,
+    load_dom=True
+)
+quotes = page.css('.quote .text::text').getall()
+```
+
+**Features:**
+- Full Playwright browser automation
+- JavaScript execution and DOM manipulation
+- Wait for network idle, selectors, or custom conditions
+- Page actions for complex interactions
+- Real Chrome or Chromium support
+
+**When to use:**
+- JavaScript-heavy single-page applications (SPAs)
+- Sites requiring complex user interactions
+- When you need to execute custom JavaScript
+- Dynamic content loading scenarios
+
+## Quick Decision Guide
+
+<Steps>
+  <Step title="Start with Fetcher">
+    Always try `Fetcher` first - it's the fastest option and works for most static sites.
+  </Step>
+  
+  <Step title="Switch to StealthyFetcher if blocked">
+    If you encounter Cloudflare or anti-bot protection, use `StealthyFetcher`.
+  </Step>
+  
+  <Step title="Use DynamicFetcher for JavaScript-heavy sites">
+    If content loads via JavaScript or you need browser automation, use `DynamicFetcher`.
+  </Step>
+</Steps>
+
+## Async Support
+
+All fetchers support async operations:
+
+```python
+import asyncio
+from scrapling.fetchers import AsyncFetcher, StealthyFetcher, DynamicFetcher
+
+async def scrape():
+    # Async HTTP request
+    page1 = await AsyncFetcher.get('https://example.com')
+    
+    # Async stealth fetch
+    page2 = await StealthyFetcher.async_fetch('https://protected-site.com')
+    
+    # Async dynamic fetch
+    page3 = await DynamicFetcher.async_fetch('https://spa-site.com')
+
+asyncio.run(scrape())
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Static Requests" icon="bolt" href="/fetching/static-requests">
+    Learn about the Fetcher class for HTTP requests
+  </Card>
+  <Card title="Stealthy Mode" icon="mask" href="/fetching/stealthy-mode">
+    Bypass anti-bot systems with StealthyFetcher
+  </Card>
+  <Card title="Browser Automation" icon="browser" href="/fetching/browser-automation">
+    Full browser control with DynamicFetcher
+  </Card>
+  <Card title="Sessions" icon="arrows-rotate" href="/fetching/sessions">
+    Manage persistent sessions and cookies
+  </Card>
+</CardGroup>

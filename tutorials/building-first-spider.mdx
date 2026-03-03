@@ -1,0 +1,529 @@
+---
+title: 'Building Your First Spider'
+description: 'Step-by-step tutorial to create your first web crawler with Scrapling'
+---
+
+In this tutorial, you'll build a fully functional spider from scratch that crawls multiple pages, extracts structured data, and exports the results. We'll walk through each step, explaining the concepts along the way.
+
+## What We'll Build
+
+We'll create a spider that scrapes quotes from [quotes.toscrape.com](https://quotes.toscrape.com), a website designed for practicing web scraping. Our spider will:
+
+1. Start from the homepage
+2. Extract quotes, authors, and tags from each page
+3. Follow pagination links automatically
+4. Export all data to JSON
+
+## Prerequisites
+
+Make sure you have Scrapling installed:
+
+```bash
+pip install scrapling
+```
+
+## Step 1: Basic Spider Structure
+
+Let's start with the absolute minimum spider:
+
+```python quotes_spider.py
+from scrapling.spiders import Spider, Response
+
+class QuotesSpider(Spider):
+    name = "quotes"
+    start_urls = ["https://quotes.toscrape.com"]
+    
+    async def parse(self, response: Response):
+        self.logger.info(f"Crawled: {response.url}")
+        yield {"url": response.url}
+```
+
+Let's break this down:
+
+- **`name`**: A unique identifier for your spider. Required.
+- **`start_urls`**: List of URLs where the spider begins crawling. Required.
+- **`parse()`**: The default callback method that processes responses. Must be an async generator.
+
+### Running Your Spider
+
+Run the spider:
+
+```python
+if __name__ == "__main__":
+    result = QuotesSpider().start()
+    print(f"Scraped {len(result.items)} items")
+    print(result.items)
+```
+
+Run it:
+```bash
+python quotes_spider.py
+```
+
+You should see:
+- Log messages showing the spider starting and finishing
+- The scraped item: `[{'url': 'https://quotes.toscrape.com'}]`
+- Statistics about the crawl
+
+## Step 2: Extracting Data
+
+Now let's extract actual quote data. First, inspect the HTML structure:
+
+```html
+<div class="quote">
+    <span class="text">"The world as we have created it..."</span>
+    <span>
+        by <small class="author">Albert Einstein</small>
+    </span>
+    <div class="tags">
+        Tags:
+        <a class="tag">change</a>
+        <a class="tag">deep-thoughts</a>
+    </div>
+</div>
+```
+
+Update the `parse()` method:
+
+```python quotes_spider.py
+from scrapling.spiders import Spider, Response
+
+class QuotesSpider(Spider):
+    name = "quotes"
+    start_urls = ["https://quotes.toscrape.com"]
+    
+    async def parse(self, response: Response):
+        # Select all quote elements
+        for quote in response.css('div.quote'):
+            yield {
+                'text': quote.css('span.text::text').get(),
+                'author': quote.css('small.author::text').get(),
+                'tags': quote.css('div.tags a.tag::text').getall(),
+            }
+
+if __name__ == "__main__":
+    result = QuotesSpider().start()
+    print(f"Scraped {len(result.items)} quotes")
+    # Print first quote
+    if result.items:
+        print(result.items[0])
+```
+
+### Understanding Selectors
+
+- **`response.css('div.quote')`**: Finds all `<div class="quote">` elements
+- **`::text`**: CSS pseudo-element that extracts text content
+- **`.get()`**: Returns the first match (or None)
+- **`.getall()`**: Returns all matches as a list
+
+Run the spider again. You should now see structured quote data!
+
+## Step 3: Following Pagination
+
+The website has multiple pages. Let's make the spider follow the "Next" button:
+
+```python quotes_spider.py
+from scrapling.spiders import Spider, Response
+
+class QuotesSpider(Spider):
+    name = "quotes"
+    start_urls = ["https://quotes.toscrape.com"]
+    
+    async def parse(self, response: Response):
+        # Extract quotes from current page
+        for quote in response.css('div.quote'):
+            yield {
+                'text': quote.css('span.text::text').get(),
+                'author': quote.css('small.author::text').get(),
+                'tags': quote.css('div.tags a.tag::text').getall(),
+            }
+        
+        # Follow the "Next" link
+        next_page = response.css('li.next a::attr(href)').get()
+        if next_page:
+            yield response.follow(next_page, callback=self.parse)
+
+if __name__ == "__main__":
+    result = QuotesSpider().start()
+    print(f"Scraped {len(result.items)} quotes from {result.stats.requests_count} pages")
+```
+
+**Key points:**
+- **`response.follow()`**: Creates a new request from a relative or absolute URL
+- **`callback=self.parse`**: Tells the spider to process the response with `parse()`
+- The spider automatically handles relative URLs (like `/page/2/`)
+
+Run it again - you should now scrape all 100 quotes across 10 pages!
+
+## Step 4: Extracting Author Details
+
+Each author name is a link to their detail page. Let's follow those links and extract more information:
+
+```python quotes_spider.py
+from scrapling.spiders import Spider, Request, Response
+
+class QuotesSpider(Spider):
+    name = "quotes"
+    start_urls = ["https://quotes.toscrape.com"]
+    
+    async def parse(self, response: Response):
+        for quote in response.css('div.quote'):
+            # Extract basic quote data
+            quote_data = {
+                'text': quote.css('span.text::text').get(),
+                'tags': quote.css('div.tags a.tag::text').getall(),
+            }
+            
+            # Follow author link
+            author_url = quote.css('small.author ~ a::attr(href)').get()
+            if author_url:
+                yield response.follow(
+                    author_url,
+                    callback=self.parse_author,
+                    meta={'quote_data': quote_data}
+                )
+        
+        # Follow pagination
+        next_page = response.css('li.next a::attr(href)').get()
+        if next_page:
+            yield response.follow(next_page, callback=self.parse)
+    
+    async def parse_author(self, response: Response):
+        # Retrieve quote data from meta
+        quote_data = response.request.meta['quote_data']
+        
+        # Add author details
+        quote_data['author'] = {
+            'name': response.css('h3.author-title::text').get(),
+            'born': response.css('span.author-born-date::text').get(),
+            'location': response.css('span.author-born-location::text').get(),
+        }
+        
+        yield quote_data
+
+if __name__ == "__main__":
+    result = QuotesSpider().start()
+    print(f"Scraped {len(result.items)} quotes with author details")
+    if result.items:
+        import json
+        print(json.dumps(result.items[0], indent=2))
+```
+
+**New concepts:**
+- **`meta={'quote_data': quote_data}`**: Passes data between callbacks
+- **`response.request.meta['quote_data']`**: Retrieves the passed data
+- **Multiple callbacks**: `parse()` for quotes, `parse_author()` for author pages
+
+## Step 5: Adding Configuration
+
+Let's add some spider configuration to control crawling behavior:
+
+```python quotes_spider.py
+from scrapling.spiders import Spider, Response
+import logging
+
+class QuotesSpider(Spider):
+    name = "quotes"
+    start_urls = ["https://quotes.toscrape.com"]
+    
+    # Crawling configuration
+    concurrent_requests = 8  # Max parallel requests
+    download_delay = 0.5     # Delay between requests (seconds)
+    
+    # Logging configuration
+    logging_level = logging.INFO
+    log_file = "quotes_spider.log"
+    
+    async def parse(self, response: Response):
+        for quote in response.css('div.quote'):
+            yield {
+                'text': quote.css('span.text::text').get(),
+                'author': quote.css('small.author::text').get(),
+                'tags': quote.css('div.tags a.tag::text').getall(),
+            }
+        
+        next_page = response.css('li.next a::attr(href)').get()
+        if next_page:
+            yield response.follow(next_page, callback=self.parse)
+
+if __name__ == "__main__":
+    result = QuotesSpider().start()
+    print(f"\nFinal Stats:")
+    print(f"  Items scraped: {result.stats.items_scraped}")
+    print(f"  Requests made: {result.stats.requests_count}")
+    print(f"  Time elapsed: {result.stats.elapsed_seconds:.2f}s")
+```
+
+## Step 6: Data Processing & Export
+
+Add data cleaning and export functionality:
+
+```python quotes_spider.py
+from scrapling.spiders import Spider, Response
+import logging
+
+class QuotesSpider(Spider):
+    name = "quotes"
+    start_urls = ["https://quotes.toscrape.com"]
+    concurrent_requests = 8
+    download_delay = 0.5
+    logging_level = logging.INFO
+    
+    async def parse(self, response: Response):
+        for quote in response.css('div.quote'):
+            yield {
+                'text': quote.css('span.text::text').get(),
+                'author': quote.css('small.author::text').get(),
+                'tags': quote.css('div.tags a.tag::text').getall(),
+            }
+        
+        next_page = response.css('li.next a::attr(href)').get()
+        if next_page:
+            yield response.follow(next_page, callback=self.parse)
+    
+    async def on_scraped_item(self, item):
+        """Process each item before adding to results."""
+        # Clean the quote text (remove quotes)
+        if item.get('text'):
+            item['text'] = item['text'].strip('"').strip()
+        
+        # Convert tags to lowercase
+        if item.get('tags'):
+            item['tags'] = [tag.lower() for tag in item['tags']]
+        
+        return item  # Return None to drop the item
+
+if __name__ == "__main__":
+    spider = QuotesSpider()
+    result = spider.start()
+    
+    # Export to JSON
+    result.items.to_json("quotes.json", indent=True)
+    print(f"Exported {len(result.items)} quotes to quotes.json")
+    
+    # Export to JSONL (one JSON object per line)
+    result.items.to_jsonl("quotes.jsonl")
+    print(f"Exported {len(result.items)} quotes to quotes.jsonl")
+```
+
+## Step 7: Adding Pause & Resume
+
+For long-running crawls, enable checkpointing:
+
+```python quotes_spider.py
+from scrapling.spiders import Spider, Response
+import logging
+
+class QuotesSpider(Spider):
+    name = "quotes"
+    start_urls = ["https://quotes.toscrape.com"]
+    concurrent_requests = 8
+    download_delay = 0.5
+    logging_level = logging.INFO
+    
+    async def on_start(self, resuming: bool = False):
+        """Called when spider starts or resumes."""
+        if resuming:
+            self.logger.info("Resuming from previous checkpoint!")
+        else:
+            self.logger.info("Starting fresh crawl")
+    
+    async def parse(self, response: Response):
+        for quote in response.css('div.quote'):
+            yield {
+                'text': quote.css('span.text::text').get(),
+                'author': quote.css('small.author::text').get(),
+                'tags': quote.css('div.tags a.tag::text').getall(),
+            }
+        
+        next_page = response.css('li.next a::attr(href)').get()
+        if next_page:
+            yield response.follow(next_page, callback=self.parse)
+
+if __name__ == "__main__":
+    # Enable checkpointing with crawldir
+    result = QuotesSpider(crawldir="./crawl_data").start()
+    
+    if result.paused:
+        print("Crawl was paused. Run again to resume.")
+    else:
+        print("Crawl completed!")
+        result.items.to_json("quotes.json", indent=True)
+```
+
+Now you can press **Ctrl+C** while the spider is running. It will pause gracefully and save a checkpoint. Run the script again, and it will resume from where it stopped!
+
+## Step 8: Using Different Fetchers
+
+By default, spiders use HTTP requests. For JavaScript-heavy sites, use browser sessions:
+
+```python advanced_spider.py
+from scrapling.spiders import Spider, Request, Response
+from scrapling.fetchers import FetcherSession, AsyncStealthySession
+
+class AdvancedSpider(Spider):
+    name = "advanced"
+    start_urls = ["https://example.com"]
+    
+    def configure_sessions(self, manager):
+        # Fast HTTP session for simple pages
+        manager.add("fast", FetcherSession(impersonate="chrome"))
+        
+        # Stealth browser for protected pages
+        manager.add("stealth", AsyncStealthySession(
+            headless=True,
+            solve_cloudflare=True
+        ), lazy=True)  # Only start when first used
+    
+    async def parse(self, response: Response):
+        for link in response.css('a::attr(href)').getall():
+            # Route protected pages to stealth session
+            if "protected" in link:
+                yield Request(link, sid="stealth", callback=self.parse)
+            else:
+                # Use fast session for regular pages
+                yield Request(link, sid="fast", callback=self.parse)
+
+if __name__ == "__main__":
+    result = AdvancedSpider().start()
+    print(f"Scraped {len(result.items)} items")
+```
+
+## Complete Example
+
+Here's our final, production-ready spider:
+
+```python quotes_spider.py
+from scrapling.spiders import Spider, Response
+import logging
+
+class QuotesSpider(Spider):
+    """Spider that scrapes quotes from quotes.toscrape.com."""
+    
+    name = "quotes"
+    start_urls = ["https://quotes.toscrape.com"]
+    allowed_domains = {"quotes.toscrape.com"}
+    
+    # Crawling configuration
+    concurrent_requests = 8
+    download_delay = 0.5
+    
+    # Logging configuration
+    logging_level = logging.INFO
+    log_file = "quotes_spider.log"
+    
+    async def parse(self, response: Response):
+        """Extract quotes from listing pages."""
+        self.logger.info(f"Parsing {response.url}")
+        
+        # Extract quotes
+        for quote in response.css('div.quote'):
+            yield {
+                'text': quote.css('span.text::text').get(),
+                'author': quote.css('small.author::text').get(),
+                'tags': quote.css('div.tags a.tag::text').getall(),
+                'url': response.url,
+            }
+        
+        # Follow pagination
+        next_page = response.css('li.next a::attr(href)').get()
+        if next_page:
+            yield response.follow(next_page, callback=self.parse)
+    
+    async def on_scraped_item(self, item):
+        """Clean and validate scraped items."""
+        # Clean quote text
+        if item.get('text'):
+            item['text'] = item['text'].strip('"').strip()
+        
+        # Normalize tags
+        if item.get('tags'):
+            item['tags'] = [tag.lower().strip() for tag in item['tags']]
+        
+        # Drop items without text
+        if not item.get('text'):
+            return None
+        
+        return item
+    
+    async def on_start(self, resuming: bool = False):
+        """Called when spider starts."""
+        if resuming:
+            self.logger.info("Resuming crawl from checkpoint")
+        else:
+            self.logger.info("Starting fresh crawl")
+    
+    async def on_close(self):
+        """Called when spider finishes."""
+        self.logger.info("Spider finished successfully")
+
+def main():
+    # Run the spider with checkpointing
+    spider = QuotesSpider(crawldir="./crawl_data")
+    result = spider.start()
+    
+    # Print statistics
+    print("\n" + "="*50)
+    print("CRAWL STATISTICS")
+    print("="*50)
+    print(f"Items scraped: {result.stats.items_scraped}")
+    print(f"Items dropped: {result.stats.items_dropped}")
+    print(f"Requests made: {result.stats.requests_count}")
+    print(f"Failed requests: {result.stats.failed_requests}")
+    print(f"Time elapsed: {result.stats.elapsed_seconds:.2f}s")
+    print(f"Items/second: {result.stats.items_per_second:.2f}")
+    print("="*50)
+    
+    # Export results
+    if not result.paused and result.items:
+        result.items.to_json("quotes.json", indent=True)
+        print(f"\nExported {len(result.items)} quotes to quotes.json")
+    elif result.paused:
+        print("\nCrawl paused. Run again to resume.")
+
+if __name__ == "__main__":
+    main()
+```
+
+Run it:
+```bash
+python quotes_spider.py
+```
+
+## Testing Your Spider
+
+Before running on the full site, test with a single URL:
+
+```python test_spider.py
+from quotes_spider import QuotesSpider
+
+class TestQuotesSpider(QuotesSpider):
+    # Override start_urls for testing
+    start_urls = ["https://quotes.toscrape.com/page/1/"]
+    concurrent_requests = 1  # Run serially for testing
+    
+    async def parse(self, response):
+        # Don't follow pagination in tests
+        for quote in response.css('div.quote'):
+            yield {
+                'text': quote.css('span.text::text').get(),
+                'author': quote.css('small.author::text').get(),
+                'tags': quote.css('div.tags a.tag::text').getall(),
+            }
+
+if __name__ == "__main__":
+    result = TestQuotesSpider().start()
+    assert len(result.items) == 10  # First page has 10 quotes
+    print(f"Test passed! Scraped {len(result.items)} quotes")
+```
+
+## Next Steps
+
+You now have a solid foundation for building web scrapers with Scrapling! Here's what to explore next:
+
+- [Using multiple session types](/spiders/sessions) - Combine HTTP and browser sessions
+- [Proxy rotation](/fetching/proxy-rotation) - Rotate proxies and handle blocking
+- [Advanced features](/spiders/advanced-features) - Streaming, error handling, and more
+- [Real-world examples](/tutorials/real-world-examples) - Production-ready spider examples
+
+Happy scraping!

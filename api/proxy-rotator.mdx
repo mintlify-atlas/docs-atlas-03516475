@@ -1,0 +1,436 @@
+---
+title: ProxyRotator
+description: Thread-safe proxy rotation with pluggable strategies
+---
+
+The `ProxyRotator` class provides thread-safe proxy rotation with pluggable rotation strategies. It supports both string URLs and Playwright-style dictionary proxies.
+
+## Class Definition
+
+```python
+from scrapling.engines.toolbelt import ProxyRotator
+
+class ProxyRotator:
+    """
+    A thread-safe proxy rotator with pluggable rotation strategies.
+    
+    Supports:
+    - Cyclic rotation (default)
+    - Custom rotation strategies via callable
+    - Both string URLs and Playwright-style dict proxies
+    """
+```
+
+## Constructor
+
+```python
+def __init__(
+    self,
+    proxies: List[ProxyType],
+    strategy: RotationStrategy = cyclic_rotation,
+)
+```
+
+<ParamField path="proxies" type="List[ProxyType]" required>
+  List of proxy URLs or Playwright-style proxy dicts.
+  
+  **String format:** `"http://proxy1:8080"` or `"http://user:pass@proxy:8080"`
+  
+  **Dict format:** `{"server": "http://proxy:8080", "username": "user", "password": "pass"}`
+</ParamField>
+
+<ParamField path="strategy" type="RotationStrategy" default="cyclic_rotation">
+  Rotation strategy function. Takes `(proxies, current_index)` and returns `(proxy, next_index)`.
+  
+  Defaults to `cyclic_rotation` (sequential iteration with wraparound).
+</ParamField>
+
+**Raises:**
+- `ValueError` if proxies list is empty
+- `ValueError` if proxy dict is missing "server" key
+- `TypeError` if strategy is not callable
+- `TypeError` if proxy is not str or dict
+
+## Methods
+
+### get_proxy
+
+```python
+def get_proxy(self) -> ProxyType
+```
+
+Get the next proxy according to the rotation strategy. Thread-safe.
+
+**Returns:** Proxy (str or dict) selected by the strategy
+
+**Example:**
+```python
+rotator = ProxyRotator([
+    "http://proxy1:8080",
+    "http://proxy2:8080",
+    "http://proxy3:8080"
+])
+
+proxy = rotator.get_proxy()  # Returns proxy1
+proxy = rotator.get_proxy()  # Returns proxy2
+proxy = rotator.get_proxy()  # Returns proxy3
+proxy = rotator.get_proxy()  # Returns proxy1 (wrapped around)
+```
+
+## Properties
+
+### proxies
+
+```python
+@property
+def proxies(self) -> List[ProxyType]
+```
+
+Get a copy of all configured proxies.
+
+**Returns:** List of proxies (defensive copy)
+
+## Special Methods
+
+### Length
+
+```python
+def __len__(self) -> int
+```
+
+Return the total number of configured proxies.
+
+**Example:**
+```python
+rotator = ProxyRotator(["http://proxy1:8080", "http://proxy2:8080"])
+print(len(rotator))  # 2
+```
+
+### String Representation
+
+```python
+def __repr__(self) -> str
+```
+
+**Example:**
+```python
+rotator = ProxyRotator(["http://proxy1:8080", "http://proxy2:8080"])
+print(rotator)  # ProxyRotator(proxies=2)
+```
+
+## Built-in Strategies
+
+### cyclic_rotation
+
+```python
+def cyclic_rotation(
+    proxies: List[ProxyType],
+    current_index: int
+) -> Tuple[ProxyType, int]
+```
+
+Default cyclic rotation strategy - iterates through proxies sequentially, wrapping around at the end.
+
+<ParamField path="proxies" type="List[ProxyType]" required>
+  List of available proxies.
+</ParamField>
+
+<ParamField path="current_index" type="int" required>
+  Current position in the rotation.
+</ParamField>
+
+**Returns:** Tuple of `(selected_proxy, next_index)`
+
+## Utility Functions
+
+### is_proxy_error
+
+```python
+def is_proxy_error(error: Exception) -> bool
+```
+
+Check if an error is proxy-related. Works for both HTTP and browser errors.
+
+<ParamField path="error" type="Exception" required>
+  Exception to check.
+</ParamField>
+
+**Returns:** True if the error message contains proxy-related indicators
+
+**Detected indicators:**
+- "net::err_proxy"
+- "net::err_tunnel"
+- "connection refused"
+- "connection reset"
+- "connection timed out"
+- "failed to connect"
+- "could not resolve proxy"
+
+**Example:**
+```python
+from scrapling.engines.toolbelt import is_proxy_error
+
+try:
+    response = await session.fetch(url, proxy=proxy)
+except Exception as e:
+    if is_proxy_error(e):
+        print("Proxy failed, rotating...")
+        proxy = rotator.get_proxy()
+```
+
+## Usage Examples
+
+### Basic Cyclic Rotation
+
+```python
+from scrapling.engines.toolbelt import ProxyRotator
+
+# Create rotator with string proxies
+rotator = ProxyRotator([
+    "http://proxy1.example.com:8080",
+    "http://proxy2.example.com:8080",
+    "http://proxy3.example.com:8080"
+])
+
+# Use in requests
+for i in range(10):
+    proxy = rotator.get_proxy()
+    print(f"Request {i}: {proxy}")
+```
+
+### Dictionary Proxies (Playwright-style)
+
+```python
+rotator = ProxyRotator([
+    {
+        "server": "http://proxy1.example.com:8080",
+        "username": "user1",
+        "password": "pass1"
+    },
+    {
+        "server": "http://proxy2.example.com:8080",
+        "username": "user2",
+        "password": "pass2"
+    }
+])
+
+proxy = rotator.get_proxy()
+# {"server": "http://proxy1.example.com:8080", "username": "user1", "password": "pass1"}
+```
+
+### Mixed Proxy Types
+
+```python
+# Mix string and dict proxies
+rotator = ProxyRotator([
+    "http://proxy1.example.com:8080",
+    {
+        "server": "http://proxy2.example.com:8080",
+        "username": "user",
+        "password": "pass"
+    },
+    "http://user:pass@proxy3.example.com:8080"
+])
+```
+
+### With Spider
+
+```python
+from scrapling.spiders import Spider, Request
+from scrapling.engines.toolbelt import ProxyRotator
+
+class MySpider(Spider):
+    name = "proxied"
+    start_urls = ["https://example.com"]
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.proxy_rotator = ProxyRotator([
+            "http://proxy1:8080",
+            "http://proxy2:8080",
+            "http://proxy3:8080"
+        ])
+    
+    async def parse(self, response):
+        for url in response.css("a::attr(href)").getall():
+            yield Request(
+                response.urljoin(url),
+                proxy=self.proxy_rotator.get_proxy()
+            )
+```
+
+### Error Handling with Rotation
+
+```python
+from scrapling.engines.toolbelt import ProxyRotator, is_proxy_error
+
+class MySpider(Spider):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.proxy_rotator = ProxyRotator([
+            "http://proxy1:8080",
+            "http://proxy2:8080"
+        ])
+    
+    async def on_error(self, request, error):
+        if is_proxy_error(error):
+            self.logger.warning(f"Proxy error for {request.url}: {error}")
+            # Spider will automatically retry with retry_blocked_request
+    
+    async def retry_blocked_request(self, request, response):
+        # Rotate to next proxy on retry
+        request._session_kwargs["proxy"] = self.proxy_rotator.get_proxy()
+        return request
+```
+
+### Custom Rotation Strategy
+
+```python
+import random
+from typing import List, Tuple
+from scrapling.engines.toolbelt import ProxyRotator
+from scrapling.core._types import ProxyType
+
+def random_rotation(
+    proxies: List[ProxyType],
+    current_index: int
+) -> Tuple[ProxyType, int]:
+    """Random proxy selection strategy."""
+    idx = random.randint(0, len(proxies) - 1)
+    return proxies[idx], idx
+
+# Use custom strategy
+rotator = ProxyRotator(
+    proxies=["http://proxy1:8080", "http://proxy2:8080", "http://proxy3:8080"],
+    strategy=random_rotation
+)
+
+# Each call returns a random proxy
+proxy = rotator.get_proxy()
+```
+
+### Weighted Rotation Strategy
+
+```python
+import random
+from typing import List, Tuple
+from scrapling.core._types import ProxyType
+
+class WeightedRotator:
+    def __init__(self, proxies_with_weights: List[Tuple[ProxyType, int]]):
+        """proxies_with_weights: [(proxy, weight), ...]"""
+        self.proxies = [p for p, _ in proxies_with_weights]
+        self.weights = [w for _, w in proxies_with_weights]
+    
+    def strategy(self, proxies: List[ProxyType], current_index: int) -> Tuple[ProxyType, int]:
+        proxy = random.choices(self.proxies, weights=self.weights, k=1)[0]
+        idx = self.proxies.index(proxy)
+        return proxy, idx
+
+# Create weighted rotator
+weighted = WeightedRotator([
+    ("http://fast-proxy:8080", 5),   # 5x more likely
+    ("http://slow-proxy:8080", 1),   # 1x weight
+    ("http://backup-proxy:8080", 1)  # 1x weight
+])
+
+rotator = ProxyRotator(
+    proxies=weighted.proxies,
+    strategy=weighted.strategy
+)
+```
+
+### Round-Robin with Skip
+
+```python
+from typing import List, Tuple, Set
+from scrapling.core._types import ProxyType
+
+class SkipRotator:
+    def __init__(self):
+        self.failed_indices: Set[int] = set()
+    
+    def mark_failed(self, proxy: ProxyType, proxies: List[ProxyType]):
+        """Mark a proxy as failed."""
+        try:
+            idx = proxies.index(proxy)
+            self.failed_indices.add(idx)
+        except ValueError:
+            pass
+    
+    def strategy(self, proxies: List[ProxyType], current_index: int) -> Tuple[ProxyType, int]:
+        """Skip failed proxies."""
+        attempts = 0
+        while attempts < len(proxies):
+            idx = (current_index + attempts) % len(proxies)
+            if idx not in self.failed_indices:
+                return proxies[idx], (idx + 1) % len(proxies)
+            attempts += 1
+        
+        # All failed, reset and use first
+        self.failed_indices.clear()
+        return proxies[0], 1
+
+manager = SkipRotator()
+rotator = ProxyRotator(
+    proxies=["http://proxy1:8080", "http://proxy2:8080", "http://proxy3:8080"],
+    strategy=manager.strategy
+)
+
+# Mark proxy as failed
+manager.mark_failed("http://proxy2:8080", rotator.proxies)
+
+# Will skip proxy2 in rotation
+proxy = rotator.get_proxy()  # proxy1 or proxy3, never proxy2
+```
+
+### Thread Safety Demo
+
+```python
+import threading
+from scrapling.engines.toolbelt import ProxyRotator
+
+rotator = ProxyRotator([
+    "http://proxy1:8080",
+    "http://proxy2:8080",
+    "http://proxy3:8080"
+])
+
+def worker(worker_id: int, num_requests: int):
+    for i in range(num_requests):
+        proxy = rotator.get_proxy()
+        print(f"Worker {worker_id}, Request {i}: {proxy}")
+
+# Multiple threads can safely use the same rotator
+threads = [
+    threading.Thread(target=worker, args=(i, 5))
+    for i in range(3)
+]
+
+for t in threads:
+    t.start()
+
+for t in threads:
+    t.join()
+```
+
+## Type Definitions
+
+```python
+from typing import Callable, Dict, List, Tuple, Union
+
+# Proxy can be string or dict
+ProxyType = Union[str, Dict[str, str]]
+
+# Rotation strategy signature
+RotationStrategy = Callable[
+    [List[ProxyType], int],  # (proxies, current_index)
+    Tuple[ProxyType, int]     # returns (proxy, next_index)
+]
+```
+
+## See Also
+
+- [Spider](/api/spider) - Using proxies in spiders
+- [Request](/api/request) - Passing proxy to requests
+- [SessionManager](/api/session-manager) - Session-level proxy configuration

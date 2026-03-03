@@ -1,0 +1,177 @@
+---
+title: MCP Server
+description: Model Context Protocol server for AI-powered web scraping
+---
+
+Scrapling provides a Model Context Protocol (MCP) server that enables AI assistants to perform web scraping operations. The server exposes Scrapling's fetching capabilities as MCP tools.
+
+## Overview
+
+The Scrapling MCP server allows AI models to:
+
+- Fetch web pages with stealth HTTP requests
+- Extract content using CSS selectors
+- Handle JavaScript-heavy sites with browser automation
+- Bypass Cloudflare and other protections
+- Process single or multiple URLs concurrently
+- Return structured data in Markdown, HTML, or text format
+
+## Quick Start
+
+### Start the Server
+
+```bash
+scrapling mcp
+```
+
+This starts the server in stdio transport mode (default).
+
+### HTTP Transport
+
+For network access, use streamable-http transport:
+
+```bash
+scrapling mcp --http --host 0.0.0.0 --port 8000
+```
+
+## Server Configuration
+
+The MCP server configuration is defined in `server.json`:
+
+```json
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.D4Vinci/Scrapling",
+  "title": "Scrapling MCP Server",
+  "description": "Web scraping with stealth HTTP, real browsers, and Cloudflare bypass. CSS selectors supported.",
+  "version": "0.4.1"
+}
+```
+
+## Available Tools
+
+The MCP server exposes six main tools:
+
+<CardGroup cols={2}>
+  <Card title="get" icon="arrow-down">
+    Make HTTP GET requests with stealth features
+  </Card>
+  <Card title="bulk_get" icon="list">
+    Fetch multiple URLs concurrently with GET requests
+  </Card>
+  <Card title="fetch" icon="browser">
+    Use Playwright for JavaScript-heavy sites
+  </Card>
+  <Card title="bulk_fetch" icon="browsers">
+    Fetch multiple URLs with browser automation
+  </Card>
+  <Card title="stealthy_fetch" icon="shield">
+    Advanced stealth with Cloudflare bypass
+  </Card>
+  <Card title="bulk_stealthy_fetch" icon="shields">
+    Stealthy fetching for multiple URLs
+  </Card>
+</CardGroup>
+
+## Transport Modes
+
+### Stdio Transport (Default)
+
+Used for local AI assistants:
+
+```bash
+scrapling mcp
+```
+
+- Standard input/output communication
+- Best for Claude Desktop, Cline, and other local clients
+- No network configuration needed
+
+### HTTP Transport
+
+Used for network-accessible services:
+
+```bash
+scrapling mcp --http --host 0.0.0.0 --port 8000
+```
+
+- Streamable HTTP transport
+- Accessible over network
+- Configurable host and port
+
+## Response Format
+
+All tools return a structured `ResponseModel`:
+
+```python
+{
+  "status": 200,
+  "content": ["Extracted content..."],
+  "url": "https://example.com"
+}
+```
+
+<ResponseField name="status" type="integer">
+  HTTP status code from the website
+</ResponseField>
+
+<ResponseField name="content" type="array[string]">
+  Extracted content as Markdown, HTML, or text
+</ResponseField>
+
+<ResponseField name="url" type="string">
+  The URL that was requested
+</ResponseField>
+
+## Installation Methods
+
+### PyPI (Recommended)
+
+```bash
+uvx scrapling mcp
+```
+
+Or with pip:
+
+```bash
+pip install scrapling
+scrapling mcp
+```
+
+### Docker (OCI)
+
+```bash
+docker pull ghcr.io/d4vinci/scrapling
+docker run ghcr.io/d4vinci/scrapling mcp
+```
+
+## Use Cases
+
+<AccordionGroup>
+  <Accordion title="AI-powered web research">
+    Enable AI assistants to gather information from websites, extract articles, and process web content.
+  </Accordion>
+  
+  <Accordion title="Automated data collection">
+    Let AI models collect data from multiple sources concurrently with bulk operations.
+  </Accordion>
+  
+  <Accordion title="Content analysis">
+    Extract and analyze web content using CSS selectors for targeted data extraction.
+  </Accordion>
+  
+  <Accordion title="Protected site access">
+    Use stealthy fetching to access Cloudflare-protected sites through AI workflows.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Setup Guide" icon="gear" href="/ai/setup">
+    Configure MCP server for your AI client
+  </Card>
+  <Card title="Capabilities" icon="wand-magic-sparkles" href="/ai/capabilities">
+    Explore available MCP tools and features
+  </Card>
+</CardGroup>

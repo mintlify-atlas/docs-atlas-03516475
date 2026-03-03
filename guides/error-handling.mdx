@@ -1,0 +1,641 @@
+---
+title: Error Handling Best Practices
+description: Comprehensive guide to handling errors in Scrapling
+---
+
+Proper error handling is crucial for building reliable scrapers. Scrapling provides multiple layers of error handling from automatic retries to custom error callbacks.
+
+## Fetcher-Level Error Handling
+
+### Automatic Retries
+
+All fetchers automatically retry failed requests:
+
+```python
+from scrapling import StealthyFetcher
+
+response = StealthyFetcher.fetch(
+    'https://example.com',
+    retries=5,        # Retry up to 5 times (default: 3)
+    retry_delay=2     # Wait 2 seconds between retries (default: 1)
+)
+```
+
+**Configuration:** `scrapling/engines/_browsers/_validators.py:88-89`
+
+### Try-Catch Pattern
+
+Handle exceptions manually:
+
+```python
+from scrapling import StealthyFetcher
+import logging
+
+try:
+    response = StealthyFetcher.fetch('https://example.com')
+    print(response.status)
+except TimeoutError as e:
+    logging.error(f"Request timed out: {e}")
+except RuntimeError as e:
+    logging.error(f"Request failed: {e}")
+except Exception as e:
+    logging.error(f"Unexpected error: {e}")
+```
+
+### Proxy Errors
+
+Detect and handle proxy-related errors:
+
+```python
+from scrapling import StealthySession, is_proxy_error
+
+try:
+    with StealthySession(proxy='http://bad-proxy:8080') as session:
+        response = session.fetch('https://example.com')
+except Exception as e:
+    if is_proxy_error(e):
+        print("Proxy connection failed")
+        # Try different proxy
+    else:
+        print(f"Other error: {e}")
+```
+
+Proxy error indicators:
+```python
+PROXY_ERROR_INDICATORS = {
+    "net::err_proxy",
+    "net::err_tunnel",
+    "connection refused",
+    "connection reset",
+    "connection timed out",
+    "failed to connect",
+    "could not resolve proxy",
+}
+```
+
+**Source:** `scrapling/engines/toolbelt/proxy_rotation.py:7-15`, `27-30`
+
+## Spider Error Handling
+
+### On Error Hook
+
+Handle errors at the spider level:
+
+```python
+from scrapling import Spider
+
+class MySpider(Spider):
+    name = 'error_handler'
+    start_urls = ['https://example.com']
+    
+    async def on_error(self, request, error):
+        """Called when a request fails after all retries"""
+        self.logger.error(f"Request failed: {request.url}")
+        self.logger.error(f"Error: {error}")
+        
+        # Log to file
+        with open('errors.log', 'a') as f:
+            f.write(f"{request.url}: {error}\n")
+        
+        # Track in meta
+        error_type = type(error).__name__
+        self.stats.custom_stats[error_type] = \
+            self.stats.custom_stats.get(error_type, 0) + 1
+    
+    async def parse(self, response):
+        yield {'title': response.css('title::text').get()}
+```
+
+**Source:** `scrapling/spiders/spider.py:178-184`
+
+### Graceful Degradation
+
+Extract partial data even when errors occur:
+
+```python
+class RobustSpider(Spider):
+    name = 'robust'
+    start_urls = ['https://example.com']
+    
+    async def parse(self, response):
+        item = {'url': response.url}
+        
+        # Try to extract each field independently
+        try:
+            item['title'] = response.css('h1::text').get()
+        except Exception as e:
+            self.logger.warning(f"Failed to extract title: {e}")
+            item['title'] = None
+        
+        try:
+            item['price'] = response.css('.price::text').get()
+        except Exception as e:
+            self.logger.warning(f"Failed to extract price: {e}")
+            item['price'] = None
+        
+        try:
+            item['description'] = response.css('.desc::text').get()
+        except Exception as e:
+            self.logger.warning(f"Failed to extract description: {e}")
+            item['description'] = None
+        
+        yield item
+```
+
+### Error Statistics
+
+Track error rates:
+
+```python
+class StatsSpider(Spider):
+    name = 'stats_spider'
+    start_urls = ['https://example.com']
+    
+    async def on_error(self, request, error):
+        error_type = type(error).__name__
+        
+        # Track error types
+        if not hasattr(self, 'error_counts'):
+            self.error_counts = {}
+        
+        self.error_counts[error_type] = \
+            self.error_counts.get(error_type, 0) + 1
+    
+    async def on_close(self):
+        """Print error summary"""
+        if hasattr(self, 'error_counts'):
+            self.logger.info("Error Summary:")
+            for error_type, count in self.error_counts.items():
+                self.logger.info(f"  {error_type}: {count}")
+        
+        # Calculate error rate
+        total_requests = self.stats.request_count
+        total_errors = self.stats.error_count
+        
+        if total_requests > 0:
+            error_rate = (total_errors / total_requests) * 100
+            self.logger.info(f"Error rate: {error_rate:.2f}%")
+    
+    async def parse(self, response):
+        yield {'data': response.css('.content::text').get()}
+```
+
+## Logging Configuration
+
+### Custom Log Levels
+
+```python
+import logging
+
+class VerboseSpider(Spider):
+    name = 'verbose'
+    start_urls = ['https://example.com']
+    
+    # Logging configuration
+    logging_level = logging.DEBUG  # Show all logs
+    logging_format = "[%(asctime)s] %(levelname)s: %(message)s"
+    logging_date_format = "%Y-%m-%d %H:%M:%S"
+    
+    async def parse(self, response):
+        self.logger.debug(f"Parsing {response.url}")
+        yield {'data': response.text}
+```
+
+**Source:** `scrapling/spiders/spider.py:87-89`
+
+### Log to File
+
+```python
+class FileLogSpider(Spider):
+    name = 'file_logger'
+    start_urls = ['https://example.com']
+    
+    log_file = 'spider.log'  # Log to file
+    logging_level = logging.INFO
+    
+    async def parse(self, response):
+        self.logger.info(f"Scraped {response.url}")
+        yield {'title': response.css('title::text').get()}
+```
+
+**Source:** `scrapling/spiders/spider.py:90`, `118-122`
+
+### Log Counting
+
+Track log message counts:
+
+```python
+class LogCountSpider(Spider):
+    name = 'log_counter'
+    start_urls = ['https://example.com']
+    
+    async def on_close(self):
+        # Access log counts
+        counts = self._log_counter.get_counts()
+        
+        self.logger.info("Log Summary:")
+        self.logger.info(f"  Debug: {counts['debug']}")
+        self.logger.info(f"  Info: {counts['info']}")
+        self.logger.info(f"  Warning: {counts['warning']}")
+        self.logger.info(f"  Error: {counts['error']}")
+        self.logger.info(f"  Critical: {counts['critical']}")
+    
+    async def parse(self, response):
+        self.logger.info("Processing response")
+        yield {'data': response.text}
+```
+
+**Source:** `scrapling/spiders/spider.py:21-56`, `110-112`
+
+## Session Errors
+
+### Session Not Started
+
+```python
+from scrapling import StealthySession
+
+session = StealthySession()
+
+try:
+    # This will fail - session not started
+    response = session.fetch('https://example.com')
+except RuntimeError as e:
+    print(f"Error: {e}")
+    # Use context manager instead
+    with session:
+        response = session.fetch('https://example.com')
+```
+
+### Context Manager Closed
+
+```python
+with StealthySession() as session:
+    response = session.fetch('https://example.com')
+
+# Session is closed here
+try:
+    response = session.fetch('https://another.com')
+except RuntimeError as e:
+    print("Session closed")
+```
+
+**Source:** `scrapling/engines/_browsers/_stealth.py:212-213`
+
+### Session Configuration Errors
+
+```python
+from scrapling import Spider, SessionConfigurationError
+
+class BadConfigSpider(Spider):
+    name = 'bad_config'
+    
+    def configure_sessions(self, manager):
+        # This will raise SessionConfigurationError
+        raise ValueError("Invalid configuration")
+    
+    async def parse(self, response):
+        yield {}
+
+try:
+    spider = BadConfigSpider()
+except SessionConfigurationError as e:
+    print(f"Session configuration failed: {e}")
+```
+
+**Source:** `scrapling/spiders/spider.py:59-62`, `130-137`
+
+## Validation Errors
+
+### Invalid Arguments
+
+```python
+from scrapling import StealthyFetcher
+
+try:
+    response = StealthyFetcher.fetch(
+        'https://example.com',
+        timeout=-1000  # Invalid: negative timeout
+    )
+except TypeError as e:
+    print(f"Invalid argument: {e}")
+```
+
+### Type Validation
+
+```python
+try:
+    response = StealthyFetcher.fetch(
+        'https://example.com',
+        selector_config="not a dict"  # Invalid: must be dict
+    )
+except TypeError as e:
+    print(f"Type error: {e}")
+```
+
+**Source:** `scrapling/fetchers/stealth_chrome.py:54-55`
+
+### Proxy Validation
+
+```python
+from scrapling import ProxyRotator
+
+try:
+    # Invalid: dict without 'server' key
+    rotator = ProxyRotator([{'username': 'user'}])
+except ValueError as e:
+    print(f"Invalid proxy config: {e}")
+
+try:
+    # Invalid: empty list
+    rotator = ProxyRotator([])
+except ValueError as e:
+    print(f"At least one proxy required: {e}")
+```
+
+**Source:** `scrapling/engines/toolbelt/proxy_rotation.py:64-84`
+
+## Timeout Handling
+
+### Request Timeouts
+
+```python
+from scrapling import StealthyFetcher
+import asyncio
+
+try:
+    response = StealthyFetcher.fetch(
+        'https://very-slow-site.com',
+        timeout=5000  # 5 second timeout
+    )
+except TimeoutError as e:
+    print("Request timed out")
+```
+
+### Page Pool Timeouts
+
+```python
+from scrapling import StealthySession
+
+try:
+    with StealthySession(max_pages=1) as session:
+        # This will timeout if page pool is full
+        response = session.fetch('https://example.com')
+except TimeoutError as e:
+    print("No available pages in pool")
+```
+
+**Source:** `scrapling/engines/_browsers/_base.py:275-283`
+
+## Complete Error Handling Example
+
+```python
+from scrapling import Spider, StealthySession, ProxyRotator
+import asyncio
+import logging
+from datetime import datetime
+
+class ProductionSpider(Spider):
+    name = 'production'
+    start_urls = ['https://example.com']
+    
+    # Concurrency
+    concurrent_requests = 8
+    max_blocked_retries = 3
+    
+    # Logging
+    logging_level = logging.INFO
+    log_file = f'logs/{datetime.now():%Y%m%d_%H%M%S}.log'
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.error_counts = {}
+        self.failed_urls = []
+    
+    def configure_sessions(self, manager):
+        try:
+            rotator = ProxyRotator([
+                'http://proxy1:8080',
+                'http://proxy2:8080',
+            ])
+            
+            manager.add('default', StealthySession(
+                proxy_rotator=rotator,
+                retries=5,
+                retry_delay=2,
+                timeout=30000,
+            ))
+        except Exception as e:
+            self.logger.error(f"Session configuration failed: {e}")
+            raise
+    
+    async def on_error(self, request, error):
+        """Log and track errors"""
+        # Track error type
+        error_type = type(error).__name__
+        self.error_counts[error_type] = \
+            self.error_counts.get(error_type, 0) + 1
+        
+        # Save failed URL
+        self.failed_urls.append({
+            'url': request.url,
+            'error': str(error),
+            'error_type': error_type,
+            'timestamp': datetime.now().isoformat(),
+        })
+        
+        # Log error
+        self.logger.error(
+            f"Request failed: {request.url} | "
+            f"Error: {error_type} - {error}"
+        )
+        
+        # Alert on critical errors
+        if error_type in {'RuntimeError', 'TimeoutError'}:
+            await self._send_alert(request, error)
+    
+    async def _send_alert(self, request, error):
+        """Send alert for critical errors"""
+        # Your alerting logic (email, Slack, etc.)
+        pass
+    
+    async def is_blocked(self, response):
+        """Detect blocked requests"""
+        if response.status in {403, 429, 503}:
+            return True
+        
+        blocked_phrases = ['captcha', 'access denied', 'rate limit']
+        content_lower = response.text.lower()
+        
+        return any(phrase in content_lower for phrase in blocked_phrases)
+    
+    async def retry_blocked_request(self, request, response):
+        """Modify request before retry"""
+        retry_count = request.meta.get('retry_count', 0)
+        
+        self.logger.warning(
+            f"Request blocked: {request.url} | "
+            f"Retry {retry_count + 1}/{self.max_blocked_retries}"
+        )
+        
+        # Escalating delays
+        await asyncio.sleep(5 * (retry_count + 1))
+        
+        request.meta['retry_count'] = retry_count + 1
+        return request
+    
+    async def parse(self, response):
+        """Parse with error handling"""
+        item = {'url': response.url}
+        
+        try:
+            # Extract data with fallbacks
+            item['title'] = response.css('h1::text').get() or \
+                          response.css('title::text').get() or \
+                          'No title'
+            
+            item['content'] = response.css('.content::text').getall()
+            
+            # Validate item
+            if not item['content']:
+                self.logger.warning(
+                    f"Empty content for {response.url}"
+                )
+            
+            yield item
+            
+        except Exception as e:
+            self.logger.error(
+                f"Parsing failed for {response.url}: {e}"
+            )
+            # Yield partial data
+            yield item
+    
+    async def on_close(self):
+        """Print summary and save failed URLs"""
+        self.logger.info("\n" + "="*50)
+        self.logger.info("Spider Summary")
+        self.logger.info("="*50)
+        
+        # Stats
+        self.logger.info(f"Total requests: {self.stats.request_count}")
+        self.logger.info(f"Successful: {self.stats.success_count}")
+        self.logger.info(f"Failed: {self.stats.error_count}")
+        self.logger.info(f"Items scraped: {self.stats.item_count}")
+        
+        # Error breakdown
+        if self.error_counts:
+            self.logger.info("\nError Breakdown:")
+            for error_type, count in sorted(
+                self.error_counts.items(),
+                key=lambda x: x[1],
+                reverse=True
+            ):
+                self.logger.info(f"  {error_type}: {count}")
+        
+        # Log counts
+        log_counts = self._log_counter.get_counts()
+        self.logger.info("\nLog Counts:")
+        self.logger.info(f"  Warnings: {log_counts['warning']}")
+        self.logger.info(f"  Errors: {log_counts['error']}")
+        
+        # Save failed URLs
+        if self.failed_urls:
+            import json
+            
+            with open('failed_urls.json', 'w') as f:
+                json.dump(self.failed_urls, f, indent=2)
+            
+            self.logger.info(
+                f"\nSaved {len(self.failed_urls)} failed URLs to "
+                "failed_urls.json"
+            )
+
+if __name__ == '__main__':
+    try:
+        spider = ProductionSpider()
+        result = spider.start(use_uvloop=True)
+        
+        print(f"\nScraped {len(result.items)} items")
+        
+        if result.paused:
+            print("Spider was paused - resume with same command")
+        
+    except KeyboardInterrupt:
+        print("\nSpider interrupted by user")
+    except Exception as e:
+        print(f"\nFatal error: {e}")
+        logging.exception("Spider crashed")
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Context Managers">
+    Always use context managers for sessions:
+    
+    ```python
+    # Good
+    with StealthySession() as session:
+        response = session.fetch(url)
+    
+    # Bad
+    session = StealthySession()
+    session.start()
+    response = session.fetch(url)
+    session.close()  # Easy to forget!
+    ```
+  </Accordion>
+
+  <Accordion title="Log Everything">
+    Comprehensive logging helps debugging:
+    
+    ```python
+    self.logger.info(f"Fetching {url}")
+    self.logger.warning(f"Retry {attempt}")
+    self.logger.error(f"Failed: {error}")
+    ```
+  </Accordion>
+
+  <Accordion title="Track Error Rates">
+    Monitor error rates to detect issues:
+    
+    ```python
+    error_rate = errors / total_requests
+    if error_rate > 0.3:  # 30%
+        self.logger.warning("High error rate!")
+    ```
+  </Accordion>
+
+  <Accordion title="Fail Gracefully">
+    Extract partial data when possible:
+    
+    ```python
+    try:
+        item = {'required': extract_required()}
+    except:
+        return None  # Skip item
+    
+    try:
+        item['optional'] = extract_optional()
+    except:
+        item['optional'] = None  # Keep item
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Handling Blocked Requests" icon="ban" href="/guides/handling-blocked-requests">
+    Detect and retry blocked requests
+  </Card>
+  <Card title="Performance Optimization" icon="gauge-high" href="/guides/performance-optimization">
+    Optimize retry strategies
+  </Card>
+  <Card title="Anti-Bot Bypass" icon="user-secret" href="/guides/anti-bot-bypass">
+    Avoid errors with better stealth
+  </Card>
+  <Card title="Cloudflare Turnstile" icon="shield-check" href="/guides/cloudflare-turnstile">
+    Handle Cloudflare challenges
+  </Card>
+</CardGroup>

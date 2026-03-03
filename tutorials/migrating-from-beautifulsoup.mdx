@@ -1,0 +1,267 @@
+---
+title: 'Migrating from BeautifulSoup'
+description: 'Complete guide to migrating your BeautifulSoup code to Scrapling'
+---
+
+If you're already familiar with BeautifulSoup, you're in for a treat. Scrapling is much faster, provides the same parsing capabilities as BS, adds additional parsing capabilities not found in BS, and introduces powerful new features for fetching and handling modern web pages. This guide will help you quickly adapt your existing BeautifulSoup code to leverage Scrapling's capabilities.
+
+Below is a table that covers the most common operations you'll perform when scraping web pages. Each row illustrates how to achieve a specific task using BeautifulSoup and the corresponding method in Scrapling.
+
+You will notice that some shortcuts in BeautifulSoup are missing in Scrapling, which is one of the reasons BeautifulSoup is slower than Scrapling. The point is: If the same feature can be used in a short one-liner, there is no need to sacrifice performance to shorten that short line.
+
+## Quick Reference Table
+
+| Task | BeautifulSoup Code | Scrapling Code |
+|------|-------------------|----------------|
+| Parser import | `from bs4 import BeautifulSoup` | `from scrapling.parser import Selector` |
+| Parsing HTML from string | `soup = BeautifulSoup(html, 'html.parser')` | `page = Selector(html)` |
+| Finding a single element | `element = soup.find('div', class_='example')` | `element = page.find('div', class_='example')` |
+| Finding multiple elements | `elements = soup.find_all('div', class_='example')` | `elements = page.find_all('div', class_='example')` |
+| Finding with attributes dict | `element = soup.find('div', attrs={"class": "example"})` | `element = page.find('div', {"class": "example"})` |
+| Finding with regex | `element = soup.find(re.compile("^b"))` | `element = page.find(re.compile(r"^b"))`<br/>`element = page.find_by_regex(r"^b")` |
+| Finding with function | `element = soup.find(lambda e: len(list(e.children)) > 0)` | `element = page.find(lambda e: len(e.children) > 0)` |
+| Finding multiple tags | `element = soup.find(["a", "b"])` | `element = page.find(["a", "b"])` |
+| Find by text content | `element = soup.find(text="some text")` | `element = page.find_by_text("some text", partial=False)` |
+| CSS selector (first) | `element = soup.select_one('div.example')` | `element = page.css('div.example').first` |
+| CSS selector (all) | `elements = soup.select('div.example')` | `elements = page.css('div.example')` |
+| Prettified HTML | `prettified = soup.prettify()` | `prettified = page.prettify()` |
+| Raw HTML | `source = str(soup)` | `source = page.html_content` |
+| Get tag name | `name = element.name` | `name = element.tag` |
+| Get text content | `string = element.string` | `string = element.text` |
+| Get all text | `text = soup.get_text(strip=True)` | `text = page.get_all_text(strip=True)` |
+| Get attributes dict | `attrs = element.attrs` | `attrs = element.attrib` |
+| Get attribute value | `attr = element['href']` | `attr = element['href']` |
+| Navigate to parent | `parent = element.parent` | `parent = element.parent` |
+| Get all parents | `parents = list(element.parents)` | `parents = list(element.iterancestors())` |
+| Find parent by tag | `target_parent = element.find_parent("a")` | `target_parent = element.find_ancestor(lambda p: p.tag == 'a')` |
+| Get siblings | N/A | `siblings = element.siblings` |
+| Get next sibling | `next_element = element.next_sibling` | `next_element = element.next` |
+| Find next sibling | `target = element.find_next_sibling("a")` | `target = element.siblings.search(lambda s: s.tag == 'a')` |
+| Find all next siblings | `targets = element.find_next_siblings("a")` | `targets = element.siblings.filter(lambda s: s.tag == 'a')` |
+| Get previous sibling | `prev = element.previous_sibling` | `prev = element.previous` |
+| Navigate to children | `children = list(element.children)` | `children = element.children` |
+| Get all descendants | `descendants = list(element.descendants)` | `descendants = element.below_elements` |
+
+<Note>
+  **Important:** BS4's `find_previous`/`find_all_previous` searches all preceding elements in document order, while Scrapling's `path` only returns ancestors (the parent chain). These are not exact equivalents, but ancestor search covers the most common use case.
+</Note>
+
+## Key Differences
+
+**One key point to remember**: BeautifulSoup offers features for modifying and manipulating the page after it has been parsed. Scrapling focuses more on scraping the page faster for you, and then you can do what you want with the extracted information. So, two different tools can be used in Web Scraping, but one of them specializes in Web Scraping.
+
+### Different Parsers
+
+BeautifulSoup allows you to set the parser engine to use, and one of them is `lxml`. Scrapling doesn't do that and uses the `lxml` library by default for performance reasons.
+
+### Element Types
+
+In BeautifulSoup, elements are `Tag` objects; in Scrapling, they are `Selector` objects. However, they provide similar methods and properties for navigation and data extraction.
+
+### Error Handling
+
+Both libraries return `None` when an element is not found (e.g., `soup.find()` or `page.find()`). In Scrapling, `page.css()` returns an empty `Selectors` list when no elements match, and you can use `page.css('.foo').first` to safely get the first match or `None`. To avoid errors, check for `None` or empty results before accessing properties.
+
+### Text Extraction
+
+Scrapling provides additional methods for handling text through `TextHandler`, such as `clean()`, which can help remove extra whitespace, consecutive spaces, or unwanted characters.
+
+## Side-by-Side Examples
+
+### Example 1: Scraping All Links
+
+Here's a simple example of scraping a web page to extract all the links.
+
+<CodeGroup>
+```python BeautifulSoup
+import requests
+from bs4 import BeautifulSoup
+
+url = 'https://example.com'
+response = requests.get(url)
+soup = BeautifulSoup(response.text, 'html.parser')
+
+links = soup.find_all('a')
+for link in links:
+    print(link['href'])
+```
+
+```python Scrapling
+from scrapling import Fetcher
+
+url = 'https://example.com'
+page = Fetcher.get(url)
+
+links = page.css('a::attr(href)')
+for link in links:
+    print(link)
+```
+</CodeGroup>
+
+As you can see, Scrapling simplifies the process by combining fetching and parsing into a single step, making your code cleaner and more efficient.
+
+### Example 2: Extracting Product Information
+
+<CodeGroup>
+```python BeautifulSoup
+import requests
+from bs4 import BeautifulSoup
+
+url = 'https://example.com/products'
+response = requests.get(url)
+soup = BeautifulSoup(response.text, 'html.parser')
+
+products = []
+for product in soup.find_all('div', class_='product'):
+    title = product.find('h2', class_='title').get_text(strip=True)
+    price = product.find('span', class_='price').get_text(strip=True)
+    products.append({'title': title, 'price': price})
+
+for product in products:
+    print(f"{product['title']}: {product['price']}")
+```
+
+```python Scrapling
+from scrapling import Fetcher
+
+url = 'https://example.com/products'
+page = Fetcher.get(url)
+
+products = []
+for product in page.css('.product'):
+    title = product.css('h2.title::text').get()
+    price = product.css('span.price::text').get()
+    products.append({'title': title, 'price': price})
+
+for product in products:
+    print(f"{product['title']}: {product['price']}")
+```
+</CodeGroup>
+
+### Example 3: Advanced Text Processing
+
+<CodeGroup>
+```python BeautifulSoup
+import requests
+from bs4 import BeautifulSoup
+import re
+
+url = 'https://example.com/article'
+response = requests.get(url)
+soup = BeautifulSoup(response.text, 'html.parser')
+
+# Get all text and clean it manually
+text = soup.get_text(strip=True)
+# Remove extra whitespace
+text = re.sub(r'\s+', ' ', text)
+print(text)
+```
+
+```python Scrapling
+from scrapling import Fetcher
+
+url = 'https://example.com/article'
+page = Fetcher.get(url)
+
+# Scrapling has built-in text cleaning
+text = page.get_all_text(strip=True).clean()
+print(text)
+```
+</CodeGroup>
+
+### Example 4: Finding Elements by Text
+
+<CodeGroup>
+```python BeautifulSoup
+import requests
+from bs4 import BeautifulSoup
+
+url = 'https://example.com'
+response = requests.get(url)
+soup = BeautifulSoup(response.text, 'html.parser')
+
+# Find all elements containing specific text
+elements = soup.find_all(text=lambda text: text and 'Search' in text)
+for elem in elements:
+    print(elem.parent.name, elem.strip())
+```
+
+```python Scrapling
+from scrapling import Fetcher
+
+url = 'https://example.com'
+page = Fetcher.get(url)
+
+# Find elements containing specific text
+elements = page.find_by_text('Search', partial=True, first_match=False)
+for elem in elements:
+    print(elem.tag, elem.text)
+```
+</CodeGroup>
+
+### Example 5: Working with Element Attributes
+
+<CodeGroup>
+```python BeautifulSoup
+import requests
+from bs4 import BeautifulSoup
+
+url = 'https://example.com'
+response = requests.get(url)
+soup = BeautifulSoup(response.text, 'html.parser')
+
+for img in soup.find_all('img'):
+    src = img.get('src')
+    alt = img.get('alt', 'No alt text')
+    if img.has_attr('class'):
+        classes = ' '.join(img['class'])
+        print(f"{src} - {alt} - {classes}")
+    else:
+        print(f"{src} - {alt}")
+```
+
+```python Scrapling
+from scrapling import Fetcher
+
+url = 'https://example.com'
+page = Fetcher.get(url)
+
+for img in page.css('img'):
+    src = img.attrib.get('src', '')
+    alt = img.attrib.get('alt', 'No alt text')
+    if img.has_class('featured'):
+        print(f"{src} - {alt} - featured")
+    else:
+        print(f"{src} - {alt}")
+```
+</CodeGroup>
+
+## Performance Benefits
+
+Scrapling significantly outperforms BeautifulSoup in text extraction and parsing tasks:
+
+| Library | Time (ms) | vs Scrapling |
+|---------|-----------|---------------|
+| Scrapling | 2.02 | 1.0x |
+| BS4 with Lxml | 1584.31 | ~784.3x slower |
+| BS4 with html5lib | 3391.91 | ~1679.1x slower |
+
+## Additional Features in Scrapling
+
+Beyond the familiar BeautifulSoup API, Scrapling offers:
+
+1. **Adaptive Scraping**: Elements can be automatically relocated when website structures change
+2. **Advanced Fetchers**: Built-in HTTP clients with browser impersonation, stealth mode, and Cloudflare bypass
+3. **Spider Framework**: Build full-scale concurrent crawlers with pause/resume capabilities
+4. **CSS Pseudo-elements**: Extract text and attributes directly with `::text` and `::attr(name)`
+5. **Enhanced Navigation**: More powerful DOM traversal with methods like `find_similar()` and `below_elements`
+6. **Better Performance**: Optimized for speed while maintaining a familiar API
+
+## Next Steps
+
+- [Learn about Scrapling's fetching capabilities](/fetching/choosing-fetcher)
+- [Explore the parser in depth](/parsing/selectors)
+- [Build your first spider](/tutorials/building-first-spider)
+- [Check out real-world examples](/tutorials/real-world-examples)
+
+The documentation provides more details on Scrapling's features and the complete list of arguments that can be passed to all methods. This guide should make your transition from BeautifulSoup to Scrapling smooth and straightforward. Happy scraping!

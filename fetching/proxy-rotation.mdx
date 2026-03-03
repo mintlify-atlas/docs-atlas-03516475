@@ -1,0 +1,448 @@
+---
+title: Proxy Rotation
+description: Automatically rotate proxies across all fetcher and session types
+---
+
+Scrapling's `ProxyRotator` provides thread-safe proxy rotation with pluggable strategies. It works seamlessly with all fetchers and sessions (HTTP, Stealthy, and Dynamic).
+
+## Basic Usage
+
+### With HTTP Sessions
+
+```python
+from scrapling.fetchers import FetcherSession, ProxyRotator
+
+# Create proxy rotator
+proxies = [
+    'http://proxy1.example.com:8080',
+    'http://proxy2.example.com:8080',
+    'http://proxy3.example.com:8080',
+]
+rotator = ProxyRotator(proxies)
+
+# Use with session
+with FetcherSession(proxy_rotator=rotator) as session:
+    # Each request uses a different proxy (cyclic rotation)
+    page1 = session.get('https://httpbin.org/ip')  # Uses proxy1
+    page2 = session.get('https://httpbin.org/ip')  # Uses proxy2
+    page3 = session.get('https://httpbin.org/ip')  # Uses proxy3
+    page4 = session.get('https://httpbin.org/ip')  # Uses proxy1 (wraps around)
+```
+
+### With Browser Sessions
+
+```python
+from scrapling.fetchers import StealthySession, ProxyRotator
+
+proxies = [
+    {'server': 'http://proxy1:8080', 'username': 'user', 'password': 'pass'},
+    {'server': 'http://proxy2:8080', 'username': 'user', 'password': 'pass'},
+]
+rotator = ProxyRotator(proxies)
+
+with StealthySession(headless=True, proxy_rotator=rotator) as session:
+    # Each request creates a new browser context with the next proxy
+    page1 = session.fetch('https://example.com/page1')  # Uses proxy1
+    page2 = session.fetch('https://example.com/page2')  # Uses proxy2
+    page3 = session.fetch('https://example.com/page3')  # Uses proxy1
+```
+
+## Proxy Formats
+
+### String Format (HTTP Sessions)
+
+For `FetcherSession`:
+
+```python
+proxies = [
+    'http://proxy.example.com:8080',
+    'http://user:pass@proxy.example.com:8080',
+    'socks5://proxy.example.com:1080',
+]
+```
+
+### Dict Format (Browser Sessions)
+
+For `StealthySession` and `DynamicSession`:
+
+```python
+proxies = [
+    {
+        'server': 'http://proxy1.example.com:8080',
+        'username': 'user1',  # Optional
+        'password': 'pass1',  # Optional
+    },
+    {
+        'server': 'http://proxy2.example.com:8080',
+        'username': 'user2',
+        'password': 'pass2',
+    },
+    {
+        'server': 'socks5://proxy3.example.com:1080',
+    }
+]
+```
+
+### Mixed Format Support
+
+```python
+# You can mix both formats
+proxies = [
+    'http://proxy1:8080',  # String format
+    {'server': 'http://proxy2:8080', 'username': 'user', 'password': 'pass'},  # Dict format
+]
+rotator = ProxyRotator(proxies)
+```
+
+## Rotation Strategies
+
+### Cyclic Rotation (Default)
+
+Rotates through proxies sequentially:
+
+```python
+from scrapling.fetchers import ProxyRotator
+
+proxies = ['http://proxy1:8080', 'http://proxy2:8080', 'http://proxy3:8080']
+rotator = ProxyRotator(proxies)  # Uses cyclic_rotation by default
+
+with FetcherSession(proxy_rotator=rotator) as session:
+    session.get('https://example.com')  # proxy1
+    session.get('https://example.com')  # proxy2
+    session.get('https://example.com')  # proxy3
+    session.get('https://example.com')  # proxy1 (wraps around)
+```
+
+### Custom Rotation Strategy
+
+Implement your own rotation logic:
+
+```python
+import random
+from scrapling.fetchers import ProxyRotator
+
+def random_rotation(proxies, current_index):
+    """Random proxy selection."""
+    index = random.randint(0, len(proxies) - 1)
+    return proxies[index], index
+
+proxies = ['http://proxy1:8080', 'http://proxy2:8080', 'http://proxy3:8080']
+rotator = ProxyRotator(proxies, strategy=random_rotation)
+
+with FetcherSession(proxy_rotator=rotator) as session:
+    # Each request uses a random proxy
+    session.get('https://example.com')
+```
+
+### Weighted Rotation
+
+Give higher probability to certain proxies:
+
+```python
+import random
+from scrapling.fetchers import ProxyRotator
+
+def weighted_rotation(proxies, current_index):
+    """Weighted proxy selection (first proxy used 50% of the time)."""
+    weights = [0.5, 0.3, 0.2]  # Weights for each proxy
+    index = random.choices(range(len(proxies)), weights=weights)[0]
+    return proxies[index], index
+
+proxies = ['http://fast-proxy:8080', 'http://medium-proxy:8080', 'http://slow-proxy:8080']
+rotator = ProxyRotator(proxies, strategy=weighted_rotation)
+```
+
+### Sticky Session Strategy
+
+Stick to one proxy until it fails:
+
+```python
+from scrapling.fetchers import ProxyRotator
+
+def sticky_rotation(proxies, current_index):
+    """Keep using the same proxy (only rotate on failure)."""
+    return proxies[current_index], current_index
+
+proxies = ['http://proxy1:8080', 'http://proxy2:8080']
+rotator = ProxyRotator(proxies, strategy=sticky_rotation)
+```
+
+## Automatic Retry on Proxy Failure
+
+Scrapling automatically detects proxy errors and retries with the next proxy:
+
+```python
+from scrapling.fetchers import FetcherSession, ProxyRotator
+
+proxies = [
+    'http://bad-proxy:8080',    # This will fail
+    'http://good-proxy:8080',   # This will work
+]
+rotator = ProxyRotator(proxies)
+
+with FetcherSession(
+    proxy_rotator=rotator,
+    retries=3,          # Try up to 3 times
+    retry_delay=2       # Wait 2s between retries
+) as session:
+    # Automatically tries bad-proxy, detects failure, rotates to good-proxy
+    page = session.get('https://example.com')
+```
+
+Proxy errors detected:
+- `net::err_proxy`
+- `net::err_tunnel`
+- `connection refused`
+- `connection reset`
+- `connection timed out`
+- `failed to connect`
+- `could not resolve proxy`
+
+## Per-Request Proxy Override
+
+Override the rotator for specific requests:
+
+```python
+rotator = ProxyRotator(['http://proxy1:8080', 'http://proxy2:8080'])
+
+with FetcherSession(proxy_rotator=rotator) as session:
+    # Use rotator
+    page1 = session.get('https://example.com')  # Uses proxy from rotator
+    
+    # Override with static proxy
+    page2 = session.get(
+        'https://special-site.com',
+        proxy='http://special-proxy:8080'  # Overrides rotator
+    )
+    
+    # Back to rotator
+    page3 = session.get('https://example.com')  # Uses next proxy from rotator
+```
+
+## ProxyRotator API
+
+### Constructor
+
+```python
+ProxyRotator(
+    proxies,              # List of proxy strings or dicts
+    strategy=None         # Rotation strategy (default: cyclic_rotation)
+)
+```
+
+### Methods
+
+```python
+rotator = ProxyRotator(proxies)
+
+# Get next proxy (thread-safe)
+proxy = rotator.get_proxy()
+
+# Get all proxies
+all_proxies = rotator.proxies  # Returns a copy
+
+# Get proxy count
+count = len(rotator)
+
+# String representation
+print(rotator)  # ProxyRotator(proxies=3)
+```
+
+## Usage with Different Sessions
+
+### FetcherSession
+
+```python
+from scrapling.fetchers import FetcherSession, ProxyRotator
+
+proxies = [
+    'http://proxy1:8080',
+    'http://user:pass@proxy2:8080',
+]
+rotator = ProxyRotator(proxies)
+
+with FetcherSession(
+    impersonate='chrome',
+    proxy_rotator=rotator,
+    retries=5
+) as session:
+    for i in range(10):
+        page = session.get(f'https://example.com/page{i}')
+        print(f"Page {i} fetched")
+```
+
+### StealthySession
+
+```python
+from scrapling.fetchers import StealthySession, ProxyRotator
+
+proxies = [
+    {'server': 'http://proxy1:8080'},
+    {'server': 'http://proxy2:8080', 'username': 'user', 'password': 'pass'},
+]
+rotator = ProxyRotator(proxies)
+
+with StealthySession(
+    headless=True,
+    proxy_rotator=rotator,
+    solve_cloudflare=True
+) as session:
+    # Each fetch creates a new browser context with rotated proxy
+    page1 = session.fetch('https://protected-site.com/page1')
+    page2 = session.fetch('https://protected-site.com/page2')
+```
+
+### AsyncStealthySession
+
+```python
+import asyncio
+from scrapling.fetchers import AsyncStealthySession, ProxyRotator
+
+proxies = [
+    {'server': 'http://proxy1:8080'},
+    {'server': 'http://proxy2:8080'},
+    {'server': 'http://proxy3:8080'},
+]
+rotator = ProxyRotator(proxies)
+
+async def scrape():
+    async with AsyncStealthySession(
+        headless=True,
+        proxy_rotator=rotator,
+        max_pages=3
+    ) as session:
+        tasks = [
+            session.fetch(f'https://example.com/page{i}')
+            for i in range(10)
+        ]
+        results = await asyncio.gather(*tasks)
+
+asyncio.run(scrape())
+```
+
+### DynamicSession
+
+```python
+from scrapling.fetchers import DynamicSession, ProxyRotator
+
+proxies = [
+    {'server': 'http://proxy1:8080'},
+    {'server': 'http://proxy2:8080'},
+]
+rotator = ProxyRotator(proxies)
+
+with DynamicSession(
+    headless=True,
+    proxy_rotator=rotator,
+    disable_resources=True
+) as session:
+    page1 = session.fetch('https://example.com/page1')
+    page2 = session.fetch('https://example.com/page2')
+```
+
+## Advanced Example: Rate-Limited Scraping
+
+Rotate proxies to bypass rate limits:
+
+```python
+import time
+from scrapling.fetchers import FetcherSession, ProxyRotator
+
+# 10 proxies for rate limit distribution
+proxies = [f'http://proxy{i}:8080' for i in range(1, 11)]
+rotator = ProxyRotator(proxies)
+
+with FetcherSession(
+    proxy_rotator=rotator,
+    retries=5,
+    retry_delay=3
+) as session:
+    for page_num in range(1, 101):
+        try:
+            page = session.get(f'https://api.example.com/items?page={page_num}')
+            print(f"Page {page_num} fetched successfully")
+            time.sleep(0.5)  # Small delay between requests
+        except Exception as e:
+            print(f"Failed to fetch page {page_num}: {e}")
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use enough proxies">
+    Have at least 3-5 proxies in your rotation pool. More proxies = better distribution and resilience.
+  </Accordion>
+
+  <Accordion title="Configure retry settings">
+    Set appropriate `retries` and `retry_delay` when using proxy rotation. Failed proxies will be skipped automatically.
+  </Accordion>
+
+  <Accordion title="Match proxy format to session type">
+    Use string format for `FetcherSession` and dict format for browser sessions (`StealthySession`, `DynamicSession`).
+  </Accordion>
+
+  <Accordion title="Test proxies before adding">
+    Validate that your proxies work before adding them to the rotator. Bad proxies will cause retry delays.
+  </Accordion>
+
+  <Accordion title="Monitor proxy performance">
+    Log proxy usage and failures to identify problematic proxies and optimize your pool.
+  </Accordion>
+
+  <Accordion title="Use custom strategies for advanced needs">
+    Implement custom rotation strategies for weighted selection, geo-targeting, or performance-based rotation.
+  </Accordion>
+</AccordionGroup>
+
+## Proxy Rotation vs Static Proxy
+
+```python
+from scrapling.fetchers import FetcherSession, ProxyRotator
+
+# DON'T: Cannot use both
+rotator = ProxyRotator(['http://proxy1:8080', 'http://proxy2:8080'])
+try:
+    with FetcherSession(
+        proxy='http://static-proxy:8080',  # Static proxy
+        proxy_rotator=rotator              # Rotator
+    ) as session:
+        pass
+except ValueError as e:
+    print(e)  # "Cannot use 'proxy_rotator' together with 'proxy'"
+
+# DO: Use one or the other
+with FetcherSession(proxy_rotator=rotator) as session:
+    # Can still override per-request
+    page = session.get('https://example.com', proxy='http://override:8080')
+```
+
+## Thread Safety
+
+`ProxyRotator` is thread-safe and can be shared across threads:
+
+```python
+import concurrent.futures
+from scrapling.fetchers import Fetcher, ProxyRotator
+
+proxies = [f'http://proxy{i}:8080' for i in range(1, 6)]
+rotator = ProxyRotator(proxies)
+
+def fetch_page(url):
+    proxy = rotator.get_proxy()  # Thread-safe
+    return Fetcher.get(url, proxy=proxy)
+
+with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+    urls = [f'https://example.com/page{i}' for i in range(50)]
+    results = executor.map(fetch_page, urls)
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Sessions" icon="arrows-rotate" href="/fetching/sessions">
+    Learn more about session management
+  </Card>
+  <Card title="Spiders" icon="spider" href="/fetching/proxy-rotation">
+    Use proxy rotation in spider crawls
+  </Card>
+</CardGroup>

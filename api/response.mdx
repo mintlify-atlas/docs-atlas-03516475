@@ -1,0 +1,361 @@
+---
+title: Response
+description: Unified response object returned by all Scrapling engines
+---
+
+The `Response` class extends `Selector` to provide a unified response type across different fetching engines. It includes HTTP metadata alongside all the parsing capabilities of `Selector`.
+
+## Constructor
+
+```python
+def __init__(
+    self,
+    url: str,
+    content: str | bytes,
+    status: int,
+    reason: str,
+    cookies: Tuple[Dict[str, str], ...] | Dict[str, str],
+    headers: Dict,
+    request_headers: Dict,
+    encoding: str = "utf-8",
+    method: str = "GET",
+    history: List | None = None,
+    meta: Dict[str, Any] | None = None,
+    **selector_config: Any,
+)
+```
+
+<ParamField path="url" type="str" required>
+  The URL of the response
+</ParamField>
+
+<ParamField path="content" type="str | bytes" required>
+  The response content (automatically converted to bytes)
+</ParamField>
+
+<ParamField path="status" type="int" required>
+  HTTP status code (e.g., 200, 404, 500)
+</ParamField>
+
+<ParamField path="reason" type="str" required>
+  HTTP status reason phrase (e.g., "OK", "Not Found")
+</ParamField>
+
+<ParamField path="cookies" type="Tuple[Dict[str, str], ...] | Dict[str, str]" required>
+  Response cookies
+</ParamField>
+
+<ParamField path="headers" type="Dict" required>
+  Response headers
+</ParamField>
+
+<ParamField path="request_headers" type="Dict" required>
+  Request headers that were sent
+</ParamField>
+
+<ParamField path="encoding" type="str" default="utf-8">
+  Character encoding to use for parsing
+</ParamField>
+
+<ParamField path="method" type="str" default="GET">
+  HTTP method used (GET, POST, etc.)
+</ParamField>
+
+<ParamField path="history" type="List" default="None">
+  List of redirect responses if any
+</ParamField>
+
+<ParamField path="meta" type="Dict[str, Any]" default="None">
+  Additional metadata dictionary. Must be a dict if provided
+</ParamField>
+
+<ParamField path="**selector_config" type="Any">
+  Additional configuration passed to the `Selector` base class (e.g., `adaptive`, `huge_tree`, `keep_comments`, etc.)
+</ParamField>
+
+## Properties
+
+### status
+
+```python
+status: int
+```
+
+HTTP status code of the response.
+
+**Example:**
+```python
+if response.status == 200:
+    print("Success!")
+elif response.status == 404:
+    print("Not found")
+```
+
+### reason
+
+```python
+reason: str
+```
+
+HTTP status reason phrase.
+
+**Example:**
+```python
+print(f"Status: {response.status} {response.reason}")
+# Output: Status: 200 OK
+```
+
+### cookies
+
+```python
+cookies: Tuple[Dict[str, str], ...] | Dict[str, str]
+```
+
+Response cookies.
+
+**Example:**
+```python
+for cookie in response.cookies:
+    print(f"{cookie['name']}: {cookie['value']}")
+```
+
+### headers
+
+```python
+headers: Dict
+```
+
+Response headers.
+
+**Example:**
+```python
+content_type = response.headers.get('content-type')
+server = response.headers.get('server')
+```
+
+### request_headers
+
+```python
+request_headers: Dict
+```
+
+Headers that were sent with the request.
+
+**Example:**
+```python
+user_agent = response.request_headers.get('user-agent')
+referer = response.request_headers.get('referer')
+```
+
+### history
+
+```python
+history: List
+```
+
+List of redirect responses if the request was redirected.
+
+**Example:**
+```python
+if response.history:
+    print(f"Redirected {len(response.history)} times")
+    for redirect in response.history:
+        print(f"  {redirect.status} -> {redirect.url}")
+```
+
+### meta
+
+```python
+meta: Dict[str, Any]
+```
+
+Additional metadata dictionary. Useful for passing custom data between requests in spiders.
+
+**Example:**
+```python
+# In spider callback
+response.meta['page_number'] = 1
+response.meta['category'] = 'electronics'
+```
+
+### request
+
+```python
+request: Optional[Request]
+```
+
+Reference to the Request object that generated this response. Set by the crawler.
+
+**Example:**
+```python
+if response.request:
+    print(f"Original URL: {response.request.url}")
+```
+
+### body
+
+```python
+@property
+def body(self) -> bytes
+```
+
+Return the raw body of the response as bytes.
+
+**Returns:** The response body as bytes
+
+**Example:**
+```python
+raw_content = response.body
+with open('page.html', 'wb') as f:
+    f.write(raw_content)
+```
+
+## Methods
+
+### follow()
+
+```python
+def follow(
+    self,
+    url: str,
+    sid: str = "",
+    callback: Callable[[Response], AsyncGenerator[Union[Dict[str, Any], Request, None], None]] | None = None,
+    priority: int | None = None,
+    dont_filter: bool = False,
+    meta: dict[str, Any] | None = None,
+    referer_flow: bool = True,
+    **kwargs: Any,
+) -> Request
+```
+
+Create a Request to follow a URL. This is a helper method for spiders to easily follow links found in pages.
+
+**IMPORTANT:** Most arguments, if left empty, will use the corresponding value from the previous request. The only exception is `dont_filter`.
+
+<ParamField path="url" type="str" required>
+  The URL to follow (can be relative, will be joined with current URL)
+</ParamField>
+
+<ParamField path="sid" type="str" default="">
+  The session id to use. Defaults to the original request's session id
+</ParamField>
+
+<ParamField path="callback" type="Callable" default="None">
+  Spider callback method to use. Defaults to the original request's callback
+</ParamField>
+
+<ParamField path="priority" type="int" default="None">
+  The priority number to use, the higher the number, the higher priority to be processed first. Defaults to the original request's priority
+</ParamField>
+
+<ParamField path="dont_filter" type="bool" default="false">
+  If this request has been done before, disable the filter to allow it again
+</ParamField>
+
+<ParamField path="meta" type="dict[str, Any]" default="None">
+  Additional meta data to include in the request. Will be merged with the current response's meta
+</ParamField>
+
+<ParamField path="referer_flow" type="bool" default="true">
+  Set the current response URL as referer for the new request URL
+</ParamField>
+
+<ParamField path="**kwargs" type="Any">
+  Additional Request arguments. Will be merged with the original session kwargs
+</ParamField>
+
+**Returns:** A `Request` object ready to be yielded
+
+**Example:**
+```python
+# In a spider callback
+def parse(self, response):
+    # Follow pagination
+    next_page = response.css('a.next::attr(href)').get()
+    if next_page:
+        yield response.follow(next_page, callback=self.parse)
+    
+    # Follow product links with custom meta
+    for product_url in response.css('.product a::attr(href)').getall():
+        yield response.follow(
+            product_url,
+            callback=self.parse_product,
+            meta={'category': 'electronics'},
+            priority=10
+        )
+```
+
+## String Representation
+
+### \_\_str\_\_()
+
+```python
+def __str__(self) -> str
+```
+
+String representation of the response.
+
+**Returns:** A string in the format `<status url>`
+
+**Example:**
+```python
+print(response)
+# Output: <200 https://example.com/page>
+```
+
+## Inheritance
+
+Since `Response` inherits from `Selector`, all `Selector` methods and properties are available:
+
+**Selection Methods:**
+- `css()` - Select with CSS selectors
+- `xpath()` - Select with XPath
+- `find()`, `find_all()` - Find by various filters
+- `find_by_text()` - Find by text content
+- `find_by_regex()` - Find by regex pattern
+
+**Properties:**
+- `text` - Element text content
+- `attrib` - Element attributes
+- `html_content` - Inner HTML
+- `tag` - Tag name
+- `parent`, `children`, `siblings` - DOM navigation
+
+**Extraction:**
+- `get()`, `getall()` - Serialize elements
+- `get_all_text()` - Get all text content
+- `json()` - Parse JSON
+- `re()`, `re_first()` - Extract with regex
+
+See the [Selector](/api/selector) documentation for complete details.
+
+## Example Usage
+
+```python
+from scrapling import Fetcher
+
+# Fetch a page
+response = Fetcher.get('https://example.com')
+
+# Access HTTP metadata
+print(f"Status: {response.status}")
+print(f"Headers: {response.headers}")
+print(f"Cookies: {response.cookies}")
+
+# Use Selector methods for parsing
+title = response.css('title::text').get()
+links = response.css('a::attr(href)').getall()
+
+# Extract data
+products = []
+for product in response.css('.product'):
+    products.append({
+        'name': product.css('h2::text').get(),
+        'price': product.css('.price::text').re_first(r'\d+\.\d+'),
+        'url': response.urljoin(product.css('a::attr(href)').get())
+    })
+
+# Check redirects
+if response.history:
+    print("This page was redirected")
+```

@@ -1,0 +1,443 @@
+---
+title: MCP Capabilities
+description: Tools and features available through Scrapling's MCP server
+---
+
+Scrapling's MCP server provides six powerful tools for web scraping operations. Each tool is optimized for different use cases and protection levels.
+
+## Available Tools
+
+### get
+
+Make stealth HTTP GET requests to fetch web pages.
+
+**Best for:** Low to mid protection levels, simple HTTP requests
+
+**Parameters:**
+
+<ParamField path="url" type="string" required>
+  The URL to request
+</ParamField>
+
+<ParamField path="impersonate" type="string" default="chrome">
+  Browser to impersonate (chrome, firefox, safari, etc.)
+</ParamField>
+
+<ParamField path="extraction_type" type="string" default="markdown">
+  Output format: `markdown`, `html`, or `text`
+</ParamField>
+
+<ParamField path="css_selector" type="string">
+  CSS selector to extract specific content
+</ParamField>
+
+<ParamField path="main_content_only" type="boolean" default="true">
+  Extract only content within `<body>` tag
+</ParamField>
+
+<ParamField path="headers" type="object">
+  Custom HTTP headers
+</ParamField>
+
+<ParamField path="cookies" type="object">
+  Cookies to include in request
+</ParamField>
+
+<ParamField path="proxy" type="string">
+  Proxy URL (format: "http://user:pass@host:port")
+</ParamField>
+
+<ParamField path="timeout" type="number" default="30">
+  Request timeout in seconds
+</ParamField>
+
+<ParamField path="stealthy_headers" type="boolean" default="true">
+  Use real browser headers
+</ParamField>
+
+**Example usage:**
+
+```python
+{
+  "url": "https://example.com",
+  "extraction_type": "markdown",
+  "css_selector": "article.main",
+  "impersonate": "chrome"
+}
+```
+
+### bulk_get
+
+Fetch multiple URLs concurrently with HTTP GET requests.
+
+**Best for:** Scraping multiple pages efficiently
+
+**Parameters:**
+
+Same as `get`, but accepts `urls` (array) instead of `url` (string).
+
+<ParamField path="urls" type="array[string]" required>
+  List of URLs to fetch concurrently
+</ParamField>
+
+**Example usage:**
+
+```python
+{
+  "urls": [
+    "https://example.com/page1",
+    "https://example.com/page2",
+    "https://example.com/page3"
+  ],
+  "extraction_type": "markdown",
+  "impersonate": "firefox"
+}
+```
+
+### fetch
+
+Use Playwright browser automation for JavaScript-heavy sites.
+
+**Best for:** Single-page applications, sites requiring JavaScript execution
+
+**Parameters:**
+
+<ParamField path="url" type="string" required>
+  The URL to fetch
+</ParamField>
+
+<ParamField path="extraction_type" type="string" default="markdown">
+  Output format: `markdown`, `html`, or `text`
+</ParamField>
+
+<ParamField path="headless" type="boolean" default="true">
+  Run browser in headless mode
+</ParamField>
+
+<ParamField path="disable_resources" type="boolean" default="false">
+  Block images, fonts, media for speed boost
+</ParamField>
+
+<ParamField path="network_idle" type="boolean" default="false">
+  Wait for no network activity for 500ms
+</ParamField>
+
+<ParamField path="timeout" type="number" default="30000">
+  Timeout in milliseconds
+</ParamField>
+
+<ParamField path="wait" type="number" default="0">
+  Additional wait time in milliseconds
+</ParamField>
+
+<ParamField path="wait_selector" type="string">
+  CSS selector to wait for before proceeding
+</ParamField>
+
+<ParamField path="wait_selector_state" type="string" default="attached">
+  State to wait for: `attached`, `detached`, `visible`, `hidden`
+</ParamField>
+
+<ParamField path="real_chrome" type="boolean" default="false">
+  Use real Chrome installation instead of Chromium
+</ParamField>
+
+<ParamField path="google_search" type="boolean" default="true">
+  Set referer as Google search of domain
+</ParamField>
+
+**Example usage:**
+
+```python
+{
+  "url": "https://spa-website.com",
+  "extraction_type": "markdown",
+  "wait_selector": "div.content-loaded",
+  "network_idle": true,
+  "disable_resources": true
+}
+```
+
+### bulk_fetch
+
+Fetch multiple URLs with browser automation concurrently.
+
+**Best for:** Scraping multiple JavaScript-heavy pages
+
+**Parameters:**
+
+Same as `fetch`, but accepts `urls` (array) instead of `url` (string).
+
+**Example usage:**
+
+```python
+{
+  "urls": [
+    "https://app1.example.com",
+    "https://app2.example.com"
+  ],
+  "headless": true,
+  "network_idle": true
+}
+```
+
+### stealthy_fetch
+
+Advanced stealth browser automation with Cloudflare bypass.
+
+**Best for:** High protection sites, Cloudflare-protected pages
+
+**Parameters:**
+
+All `fetch` parameters, plus:
+
+<ParamField path="solve_cloudflare" type="boolean" default="false">
+  Automatically solve Cloudflare challenges
+</ParamField>
+
+<ParamField path="block_webrtc" type="boolean" default="false">
+  Block WebRTC to prevent IP leaks
+</ParamField>
+
+<ParamField path="allow_webgl" type="boolean" default="true">
+  Allow WebGL (recommended for stealth)
+</ParamField>
+
+<ParamField path="hide_canvas" type="boolean" default="false">
+  Add noise to canvas fingerprinting
+</ParamField>
+
+<ParamField path="additional_args" type="object">
+  Additional Playwright context settings
+</ParamField>
+
+**Example usage:**
+
+```python
+{
+  "url": "https://protected-site.com",
+  "extraction_type": "markdown",
+  "solve_cloudflare": true,
+  "block_webrtc": true,
+  "hide_canvas": true,
+  "wait": 2000
+}
+```
+
+### bulk_stealthy_fetch
+
+Fetch multiple protected URLs with advanced stealth.
+
+**Best for:** Scraping multiple Cloudflare-protected sites
+
+**Parameters:**
+
+Same as `stealthy_fetch`, but accepts `urls` (array) instead of `url` (string).
+
+**Example usage:**
+
+```python
+{
+  "urls": [
+    "https://protected1.com",
+    "https://protected2.com"
+  ],
+  "solve_cloudflare": true,
+  "network_idle": true
+}
+```
+
+## Response Format
+
+All tools return a structured response:
+
+```python
+{
+  "status": 200,
+  "content": ["Extracted content in requested format"],
+  "url": "https://example.com"
+}
+```
+
+For bulk operations, an array of responses is returned:
+
+```python
+[
+  {
+    "status": 200,
+    "content": ["Content from URL 1"],
+    "url": "https://example.com/page1"
+  },
+  {
+    "status": 200,
+    "content": ["Content from URL 2"],
+    "url": "https://example.com/page2"
+  }
+]
+```
+
+## Extraction Types
+
+<Tabs>
+  <Tab title="Markdown">
+    Converts HTML to clean Markdown format:
+    ```python
+    {"extraction_type": "markdown"}
+    ```
+    Best for: Readable text, content processing, AI consumption
+  </Tab>
+  
+  <Tab title="HTML">
+    Returns raw HTML content:
+    ```python
+    {"extraction_type": "html"}
+    ```
+    Best for: Preserving structure, further parsing, archival
+  </Tab>
+  
+  <Tab title="Text">
+    Extracts plain text only:
+    ```python
+    {"extraction_type": "text"}
+    ```
+    Best for: Text analysis, search indexing, minimal data
+  </Tab>
+</Tabs>
+
+## CSS Selectors
+
+All tools support CSS selectors for targeted extraction:
+
+```python
+# Extract all articles
+{"css_selector": "article.post"}
+
+# Extract main content
+{"css_selector": "main#content"}
+
+# Extract specific elements
+{"css_selector": "div.product-info"}
+```
+
+<Note>
+When `css_selector` matches multiple elements, all matches are returned in the content array.
+</Note>
+
+## Authentication
+
+### HTTP Basic Auth
+
+```python
+{
+  "url": "https://example.com",
+  "auth": {
+    "username": "user",
+    "password": "pass"
+  }
+}
+```
+
+### Proxy Authentication
+
+```python
+{
+  "url": "https://example.com",
+  "proxy": "http://proxy.example.com:8080",
+  "proxy_auth": {
+    "username": "proxy_user",
+    "password": "proxy_pass"
+  }
+}
+```
+
+## Common Patterns
+
+<AccordionGroup>
+  <Accordion title="Simple page fetch">
+    ```python
+    {
+      "url": "https://example.com",
+      "extraction_type": "markdown"
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Extract article content">
+    ```python
+    {
+      "url": "https://news.example.com/article",
+      "css_selector": "article.content",
+      "extraction_type": "markdown",
+      "main_content_only": true
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Scrape SPA application">
+    ```python
+    {
+      "url": "https://spa.example.com",
+      "wait_selector": "div.loaded",
+      "network_idle": true,
+      "extraction_type": "html"
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Bypass Cloudflare">
+    ```python
+    {
+      "url": "https://protected.example.com",
+      "solve_cloudflare": true,
+      "wait": 2000,
+      "extraction_type": "markdown"
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Bulk scraping with stealth">
+    ```python
+    {
+      "urls": [
+        "https://site1.com",
+        "https://site2.com",
+        "https://site3.com"
+      ],
+      "impersonate": "chrome,firefox,safari",
+      "stealthy_headers": true,
+      "extraction_type": "markdown"
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Tool Selection Guide
+
+<Steps>
+  <Step title="Simple HTTP sites">
+    Use `get` or `bulk_get` for basic HTML pages without JavaScript
+  </Step>
+  
+  <Step title="JavaScript-heavy sites">
+    Use `fetch` or `bulk_fetch` for SPAs and dynamic content
+  </Step>
+  
+  <Step title="Protected sites">
+    Use `stealthy_fetch` or `bulk_stealthy_fetch` for Cloudflare and WAF-protected sites
+  </Step>
+  
+  <Step title="Multiple URLs">
+    Use bulk variants (`bulk_get`, `bulk_fetch`, `bulk_stealthy_fetch`) for concurrent operations
+  </Step>
+</Steps>
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="MCP Server" icon="server" href="/ai/mcp-server">
+    Learn about the MCP server
+  </Card>
+  <Card title="Setup Guide" icon="gear" href="/ai/setup">
+    Configure MCP server for AI clients
+  </Card>
+</CardGroup>

@@ -1,0 +1,284 @@
+---
+title: Extract Commands
+description: Fetch and extract web content from the command line
+---
+
+Scrapling's extract commands allow you to fetch web pages and save content in various formats without writing code.
+
+## HTTP Methods
+
+### GET Request
+
+Perform a GET request and save content:
+
+```bash
+scrapling extract get https://example.com output.html
+```
+
+#### Options
+
+- `--headers`, `-H` - HTTP headers (repeatable)
+- `--cookies` - Cookie string
+- `--timeout` - Timeout in seconds (default: 30)
+- `--proxy` - Proxy URL
+- `--css-selector`, `-s` - CSS selector for specific content
+- `--params`, `-p` - Query parameters (repeatable)
+- `--follow-redirects` / `--no-follow-redirects` - Follow redirects (default: true)
+- `--verify` / `--no-verify` - Verify SSL certificates (default: true)
+- `--impersonate` - Browser to impersonate
+- `--stealthy-headers` / `--no-stealthy-headers` - Use browser-like headers (default: true)
+
+#### Examples
+
+```bash
+# Save as HTML
+scrapling extract get https://example.com page.html
+
+# Save as Markdown
+scrapling extract get https://example.com page.md
+
+# Save as plain text
+scrapling extract get https://example.com page.txt
+
+# With custom headers
+scrapling extract get https://api.example.com/data output.json \
+  -H "Authorization: Bearer token123" \
+  -H "Accept: application/json"
+
+# Extract specific element
+scrapling extract get https://example.com content.md \
+  --css-selector "article.main-content"
+
+# With proxy
+scrapling extract get https://example.com page.html \
+  --proxy "http://user:pass@proxy.example.com:8080"
+
+# Impersonate browsers (single or random)
+scrapling extract get https://example.com page.html --impersonate chrome
+scrapling extract get https://example.com page.html --impersonate "chrome,firefox,safari"
+```
+
+### POST Request
+
+Perform a POST request with form data or JSON:
+
+```bash
+scrapling extract post https://example.com/api output.json --json '{"key": "value"}'
+```
+
+#### Additional Options
+
+- `--data`, `-d` - Form data ("param1=value1&param2=value2")
+- `--json`, `-j` - JSON data as string
+
+#### Examples
+
+```bash
+# POST with JSON
+scrapling extract post https://api.example.com/endpoint response.json \
+  --json '{"name": "John", "age": 30}'
+
+# POST with form data
+scrapling extract post https://example.com/form result.html \
+  --data "username=user&password=pass"
+
+# POST with headers and cookies
+scrapling extract post https://api.example.com/data output.json \
+  --json '{"query": "search term"}' \
+  -H "Content-Type: application/json" \
+  --cookies "session=abc123; token=xyz789"
+```
+
+### PUT Request
+
+Update resources with PUT:
+
+```bash
+scrapling extract put https://api.example.com/resource/1 response.json \
+  --json '{"status": "updated"}'
+```
+
+### DELETE Request
+
+Delete resources:
+
+```bash
+scrapling extract delete https://api.example.com/resource/1 response.html
+```
+
+## Browser Automation
+
+### Dynamic Fetcher
+
+Use Playwright for JavaScript-heavy sites:
+
+```bash
+scrapling extract fetch https://example.com output.html
+```
+
+#### Options
+
+- `--headless` / `--no-headless` - Headless mode (default: true)
+- `--disable-resources` / `--enable-resources` - Block unnecessary resources (default: false)
+- `--network-idle` / `--no-network-idle` - Wait for network idle (default: false)
+- `--timeout` - Timeout in milliseconds (default: 30000)
+- `--wait` - Additional wait time in milliseconds (default: 0)
+- `--css-selector`, `-s` - Extract specific content
+- `--wait-selector` - CSS selector to wait for
+- `--locale` - Browser locale
+- `--real-chrome` / `--no-real-chrome` - Use real Chrome installation (default: false)
+- `--proxy` - Proxy URL
+- `--extra-headers`, `-H` - Extra headers (repeatable)
+
+#### Examples
+
+```bash
+# Basic browser fetch
+scrapling extract fetch https://spa-website.com page.html
+
+# Wait for specific element
+scrapling extract fetch https://example.com content.md \
+  --wait-selector "div.loaded-content" \
+  --network-idle
+
+# Visible browser with delay
+scrapling extract fetch https://example.com page.html \
+  --no-headless \
+  --wait 3000
+
+# Speed boost by blocking resources
+scrapling extract fetch https://example.com content.txt \
+  --disable-resources
+
+# Custom locale
+scrapling extract fetch https://example.com page.html \
+  --locale "de-DE"
+```
+
+### Stealthy Fetcher
+
+Use advanced stealth features for protected sites:
+
+```bash
+scrapling extract stealthy-fetch https://protected-site.com output.html
+```
+
+#### Additional Options
+
+- `--block-webrtc` / `--allow-webrtc` - Block WebRTC (default: false)
+- `--solve-cloudflare` / `--no-solve-cloudflare` - Solve Cloudflare challenges (default: false)
+- `--allow-webgl` / `--block-webgl` - Allow WebGL (default: true)
+- `--hide-canvas` / `--show-canvas` - Add canvas noise (default: false)
+- `--real-chrome` / `--no-real-chrome` - Use real Chrome (default: false)
+
+#### Examples
+
+```bash
+# Bypass Cloudflare protection
+scrapling extract stealthy-fetch https://protected.com page.html \
+  --solve-cloudflare
+
+# Maximum stealth configuration
+scrapling extract stealthy-fetch https://protected.com content.md \
+  --solve-cloudflare \
+  --block-webrtc \
+  --hide-canvas \
+  --network-idle
+
+# Extract specific content after Cloudflare
+scrapling extract stealthy-fetch https://protected.com data.txt \
+  --solve-cloudflare \
+  --css-selector "div.main-content" \
+  --wait-selector "div.loaded"
+```
+
+## Output Formats
+
+The output format is determined by file extension:
+
+<Tabs>
+  <Tab title="HTML">
+    ```bash
+    scrapling extract get https://example.com page.html
+    ```
+    Saves raw HTML content.
+  </Tab>
+  
+  <Tab title="Markdown">
+    ```bash
+    scrapling extract get https://example.com page.md
+    ```
+    Converts HTML to Markdown format.
+  </Tab>
+  
+  <Tab title="Text">
+    ```bash
+    scrapling extract get https://example.com page.txt
+    ```
+    Extracts plain text content.
+  </Tab>
+</Tabs>
+
+## CSS Selector Extraction
+
+All extract commands support the `--css-selector` option to extract specific elements:
+
+```bash
+# Extract all matching elements
+scrapling extract get https://news.com articles.md \
+  --css-selector "article.post"
+
+# Extract specific section
+scrapling extract fetch https://example.com main.html \
+  --css-selector "main#content"
+```
+
+<Note>
+When using `--css-selector`, all matching elements are returned, not just the first one.
+</Note>
+
+## Common Patterns
+
+<AccordionGroup>
+  <Accordion title="API requests with authentication">
+    ```bash
+    scrapling extract get https://api.example.com/data response.json \
+      -H "Authorization: Bearer YOUR_TOKEN" \
+      -H "Accept: application/json"
+    ```
+  </Accordion>
+  
+  <Accordion title="Scraping with session cookies">
+    ```bash
+    scrapling extract get https://example.com/protected page.html \
+      --cookies "session_id=abc123; user_token=xyz789"
+    ```
+  </Accordion>
+  
+  <Accordion title="Waiting for dynamic content">
+    ```bash
+    scrapling extract fetch https://spa-site.com content.md \
+      --wait-selector "div.content-loaded" \
+      --network-idle
+    ```
+  </Accordion>
+  
+  <Accordion title="Handling Cloudflare protection">
+    ```bash
+    scrapling extract stealthy-fetch https://protected.com page.html \
+      --solve-cloudflare \
+      --wait 2000
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="CLI Overview" icon="terminal" href="/cli/overview">
+    View all CLI commands
+  </Card>
+  <Card title="Fetchers" icon="globe" href="/fetching/choosing-fetcher">
+    Learn about different fetchers
+  </Card>
+</CardGroup>

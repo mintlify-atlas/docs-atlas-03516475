@@ -1,0 +1,308 @@
+---
+title: Static Requests (Fetcher)
+description: Fast HTTP requests with TLS fingerprint impersonation
+---
+
+The `Fetcher` class provides fast HTTP requests with browser impersonation capabilities. Built on `curl_cffi`, it supports HTTP/1.1, HTTP/2, and HTTP/3 with automatic TLS fingerprint spoofing.
+
+## Basic Usage
+
+### One-Off Requests
+
+Use the static methods for simple, one-off requests:
+
+```python
+from scrapling.fetchers import Fetcher
+
+# GET request
+page = Fetcher.get('https://quotes.toscrape.com/')
+quotes = page.css('.quote .text::text').getall()
+
+# POST request
+response = Fetcher.post(
+    'https://httpbin.org/post',
+    data={'key': 'value'},
+    headers={'Custom-Header': 'value'}
+)
+
+# PUT request
+response = Fetcher.put(
+    'https://api.example.com/resource/123',
+    json={'name': 'updated'}
+)
+
+# DELETE request
+response = Fetcher.delete('https://api.example.com/resource/123')
+```
+
+### With FetcherSession
+
+For multiple requests to the same domain, use `FetcherSession` to maintain cookies and connection pooling:
+
+```python
+from scrapling.fetchers import FetcherSession
+
+with FetcherSession(impersonate='chrome') as session:
+    # First request
+    page1 = session.get('https://quotes.toscrape.com/')
+    
+    # Second request (cookies maintained)
+    page2 = session.get('https://quotes.toscrape.com/page/2/')
+    
+    # POST request
+    response = session.post(
+        'https://httpbin.org/post',
+        data={'username': 'user', 'password': 'pass'}
+    )
+```
+
+## Key Features
+
+### Browser Impersonation
+
+Impersonate real browser TLS fingerprints to avoid detection:
+
+```python
+from scrapling.fetchers import Fetcher
+
+# Impersonate Chrome (default)
+page = Fetcher.get('https://example.com', impersonate='chrome')
+
+# Impersonate Firefox
+page = Fetcher.get('https://example.com', impersonate='firefox135')
+
+# Random browser selection
+page = Fetcher.get(
+    'https://example.com',
+    impersonate=['chrome', 'firefox135', 'safari']
+)
+```
+
+Supported browsers: `chrome`, `firefox135`, `safari`, `edge`, and more.
+
+### Stealthy Headers
+
+Automatic generation of realistic browser headers:
+
+```python
+with FetcherSession(stealthy_headers=True) as session:
+    # Automatically adds realistic headers and Google referer
+    page = session.get('https://example.com')
+```
+
+This generates:
+- Realistic User-Agent
+- Accept headers matching the browser
+- Accept-Language
+- Referer from Google search (optional)
+
+### HTTP/3 Support
+
+```python
+from scrapling.fetchers import FetcherSession
+
+with FetcherSession(http3=True) as session:
+    page = session.get('https://cloudflare.com')
+```
+
+<Warning>
+HTTP/3 may cause issues when combined with `impersonate`. Use one or the other.
+</Warning>
+
+## Request Parameters
+
+### GET Request
+
+```python
+Fetcher.get(
+    url='https://example.com',
+    params={'key': 'value'},          # Query parameters
+    headers={'Custom': 'header'},     # Custom headers
+    cookies={'session': 'abc123'},    # Cookies
+    timeout=30,                        # Timeout in seconds
+    follow_redirects=True,             # Follow redirects
+    max_redirects=30,                  # Max redirect count
+    verify=True,                       # Verify SSL certificates
+    proxy='http://proxy:8080',         # Proxy URL
+    impersonate='chrome',              # Browser to impersonate
+    stealthy_headers=True,             # Generate realistic headers
+    retries=3,                         # Number of retries
+    retry_delay=1,                     # Delay between retries (seconds)
+)
+```
+
+### POST/PUT/DELETE Request
+
+```python
+Fetcher.post(
+    url='https://api.example.com/endpoint',
+    data={'key': 'value'},             # Form data
+    json={'key': 'value'},             # JSON payload (alternative to data)
+    params={'query': 'param'},         # Query parameters
+    headers={'Content-Type': 'application/json'},
+    cookies={'auth': 'token'},
+    timeout=30,
+    proxy='http://proxy:8080',
+    auth=('username', 'password'),     # Basic auth
+    verify=True,
+    retries=3,
+)
+```
+
+## Session Configuration
+
+### Default Settings
+
+Configure default settings for all requests in a session:
+
+```python
+from scrapling.fetchers import FetcherSession
+
+with FetcherSession(
+    impersonate='chrome',
+    stealthy_headers=True,
+    headers={'Authorization': 'Bearer token'},
+    timeout=60,
+    retries=5,
+    retry_delay=2,
+    verify=False,
+    http3=False,
+    follow_redirects=True,
+    max_redirects=30,
+) as session:
+    # All requests use these defaults
+    page = session.get('https://example.com')
+    
+    # Override per-request
+    page2 = session.get('https://example.com', timeout=120)
+```
+
+### Proxy Configuration
+
+```python
+with FetcherSession(
+    proxy='http://proxy.example.com:8080'
+) as session:
+    page = session.get('https://example.com')
+
+# With authentication
+with FetcherSession(
+    proxy='http://user:pass@proxy.example.com:8080'
+) as session:
+    page = session.get('https://example.com')
+
+# Using proxy_auth parameter
+with FetcherSession(
+    proxy='http://proxy.example.com:8080',
+    proxy_auth=('username', 'password')
+) as session:
+    page = session.get('https://example.com')
+```
+
+## Async Support
+
+FetcherSession supports both sync and async contexts:
+
+```python
+import asyncio
+from scrapling.fetchers import FetcherSession, AsyncFetcher
+
+# Context-aware session (works in both sync and async)
+async def scrape_async():
+    async with FetcherSession(http3=True) as session:
+        page1 = await session.get('https://quotes.toscrape.com/')
+        page2 = await session.get('https://quotes.toscrape.com/page/2/')
+
+# One-off async requests
+async def one_off():
+    page = await AsyncFetcher.get('https://example.com')
+    return page.css('title::text').get()
+
+asyncio.run(scrape_async())
+```
+
+## Error Handling
+
+```python
+from scrapling.fetchers import Fetcher
+from curl_cffi.curl import CurlError
+
+try:
+    page = Fetcher.get(
+        'https://example.com',
+        retries=3,
+        retry_delay=2
+    )
+except CurlError as e:
+    print(f"Request failed: {e}")
+```
+
+The fetcher automatically retries on failure. Proxy-related errors are detected and logged.
+
+## Response Object
+
+All requests return a `Response` object with the parsed HTML:
+
+```python
+page = Fetcher.get('https://quotes.toscrape.com/')
+
+# CSS selectors
+quotes = page.css('.quote .text::text').getall()
+
+# XPath selectors
+author = page.xpath('//span[@class="author"]/text()').get()
+
+# Status code and headers
+print(page.status)        # 200
+print(page.headers)       # Response headers
+print(page.url)           # Final URL (after redirects)
+
+# Raw content
+html = page.html          # HTML string
+bytes_content = page.body # Raw bytes
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use sessions for multiple requests">
+    Always use `FetcherSession` when making multiple requests to the same domain. This maintains cookies and improves performance through connection pooling.
+  </Accordion>
+
+  <Accordion title="Enable stealthy headers">
+    Set `stealthy_headers=True` to automatically generate realistic browser headers and avoid simple bot detection.
+  </Accordion>
+
+  <Accordion title="Choose the right impersonation">
+    The default `impersonate='chrome'` works for most cases. Use a list to randomly rotate between browsers.
+  </Accordion>
+
+  <Accordion title="Handle retries gracefully">
+    Configure `retries` and `retry_delay` based on your target's rate limits. Higher values are better for unstable connections.
+  </Accordion>
+</AccordionGroup>
+
+## Comparison with Other Fetchers
+
+| Feature | Fetcher | StealthyFetcher | DynamicFetcher |
+|---------|---------|-----------------|----------------|
+| Speed | ⚡⚡⚡ | ⚡⚡ | ⚡ |
+| Resource Usage | Low | Medium | High |
+| JavaScript Execution | ❌ | ✅ | ✅ |
+| Anti-Bot Bypass | Medium | High | Low |
+| HTTP/3 Support | ✅ | ❌ | ❌ |
+| Best For | Static sites, APIs | Cloudflare, anti-bot | SPAs, automation |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Stealthy Mode" icon="mask" href="/fetching/stealthy-mode">
+    Bypass anti-bot systems with StealthyFetcher
+  </Card>
+  <Card title="Sessions" icon="arrows-rotate" href="/fetching/sessions">
+    Learn about persistent sessions
+  </Card>
+  <Card title="Proxy Rotation" icon="shuffle" href="/fetching/proxy-rotation">
+    Rotate proxies automatically
+  </Card>
+</CardGroup>

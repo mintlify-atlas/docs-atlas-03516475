@@ -1,0 +1,277 @@
+---
+title: MCP Server Setup
+description: Configure Scrapling's MCP server for AI assistants
+---
+
+This guide walks you through setting up Scrapling's MCP server for use with AI assistants like Claude Desktop, Cline, and other MCP-compatible clients.
+
+## Prerequisites
+
+Before setting up the MCP server, ensure you have:
+
+- Python 3.8 or higher installed
+- Scrapling installed with extras: `pip install scrapling[all]`
+- (Optional) Playwright browsers: `scrapling install`
+
+## Installation
+
+### Method 1: Using uvx (Recommended)
+
+The fastest way to run the MCP server:
+
+```bash
+uvx scrapling mcp
+```
+
+This automatically installs and runs the server without manual installation.
+
+### Method 2: Using pip
+
+Install Scrapling globally or in a virtual environment:
+
+```bash
+# Install with all features
+pip install scrapling[all]
+
+# Install dependencies (Playwright browsers)
+scrapling install
+
+# Run the server
+scrapling mcp
+```
+
+### Method 3: Using Docker
+
+Run the MCP server in a container:
+
+```bash
+# Pull the image
+docker pull ghcr.io/d4vinci/scrapling
+
+# Run the server
+docker run -i ghcr.io/d4vinci/scrapling mcp
+```
+
+## Configuration for AI Clients
+
+### Claude Desktop
+
+Add to your Claude Desktop configuration file:
+
+**MacOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+
+**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "scrapling": {
+      "command": "uvx",
+      "args": ["scrapling", "mcp"]
+    }
+  }
+}
+```
+
+Or using pip installation:
+
+```json
+{
+  "mcpServers": {
+    "scrapling": {
+      "command": "scrapling",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+### Cline (VS Code Extension)
+
+Add to Cline's MCP settings:
+
+1. Open VS Code settings
+2. Search for "Cline MCP"
+3. Add server configuration:
+
+```json
+{
+  "scrapling": {
+    "command": "uvx",
+    "args": ["scrapling", "mcp"]
+  }
+}
+```
+
+### Custom MCP Clients
+
+For custom implementations, connect to the server using:
+
+**Stdio transport:**
+```bash
+scrapling mcp
+```
+
+**HTTP transport:**
+```bash
+scrapling mcp --http --host 0.0.0.0 --port 8000
+```
+
+## Server Options
+
+The MCP server supports several command-line options:
+
+<ParamField path="--http" type="boolean" default="false">
+  Use streamable-http transport instead of stdio
+</ParamField>
+
+<ParamField path="--host" type="string" default="0.0.0.0">
+  Host address for HTTP transport
+</ParamField>
+
+<ParamField path="--port" type="integer" default="8000">
+  Port number for HTTP transport
+</ParamField>
+
+## Transport Modes
+
+### Stdio Mode (Default)
+
+Best for local AI assistants:
+
+```bash
+scrapling mcp
+```
+
+**Characteristics:**
+- Standard input/output communication
+- No network configuration needed
+- Ideal for Claude Desktop, Cline
+- Lower latency for local operations
+
+### HTTP Mode
+
+Best for network-accessible services:
+
+```bash
+scrapling mcp --http --host 127.0.0.1 --port 8080
+```
+
+**Characteristics:**
+- Streamable HTTP transport
+- Network accessible
+- Can be used by remote clients
+- Requires port configuration
+
+## Verification
+
+After configuration, verify the setup:
+
+### Test with uvx
+
+```bash
+uvx scrapling mcp
+```
+
+You should see the server start without errors.
+
+### Test HTTP Transport
+
+```bash
+scrapling mcp --http --port 8000
+```
+
+The server should start and listen on the specified port.
+
+### Check in AI Client
+
+1. Restart your AI client (Claude Desktop, Cline, etc.)
+2. Look for "Scrapling" in available tools/servers
+3. Try a simple request: "Fetch the content from example.com"
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Server not found in AI client">
+    - Ensure the configuration file path is correct
+    - Verify the command is accessible in your PATH
+    - Restart the AI client after configuration changes
+    - Check for syntax errors in the JSON configuration
+  </Accordion>
+  
+  <Accordion title="Playwright browsers missing">
+    Run the install command:
+    ```bash
+    scrapling install
+    ```
+    This installs Chromium and required dependencies.
+  </Accordion>
+  
+  <Accordion title="Permission errors">
+    - Ensure Python has proper permissions
+    - On Unix systems, check file ownership
+    - Try running with appropriate user privileges
+  </Accordion>
+  
+  <Accordion title="Port already in use (HTTP mode)">
+    - Choose a different port: `--port 8001`
+    - Check for other services using the port
+    - Use `lsof -i :8000` (Unix) or `netstat -ano | findstr :8000` (Windows)
+  </Accordion>
+</AccordionGroup>
+
+## Environment Variables
+
+Optional environment variables for advanced configuration:
+
+```bash
+# Set custom user agent
+export SCRAPLING_USER_AGENT="Custom Agent/1.0"
+
+# Set default timeout (milliseconds)
+export SCRAPLING_TIMEOUT=60000
+
+# Enable debug logging
+export SCRAPLING_DEBUG=1
+```
+
+## Docker Configuration
+
+For Docker deployments:
+
+### Basic Docker Run
+
+```bash
+docker run -i ghcr.io/d4vinci/scrapling mcp
+```
+
+### HTTP Transport with Port Mapping
+
+```bash
+docker run -p 8000:8000 ghcr.io/d4vinci/scrapling mcp --http --port 8000
+```
+
+### Docker Compose
+
+```yaml
+version: '3.8'
+services:
+  scrapling-mcp:
+    image: ghcr.io/d4vinci/scrapling
+    command: mcp --http --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    stdin_open: true
+    tty: true
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="MCP Server Overview" icon="server" href="/ai/mcp-server">
+    Learn about MCP server features
+  </Card>
+  <Card title="Capabilities" icon="wand-magic-sparkles" href="/ai/capabilities">
+    Explore available tools and operations
+  </Card>
+</CardGroup>

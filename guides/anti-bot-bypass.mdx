@@ -1,0 +1,284 @@
+---
+title: Anti-Bot Bypass Strategies
+description: Learn how to bypass anti-bot systems using Scrapling's StealthyFetcher
+---
+
+Scrapling's `StealthyFetcher` is designed to bypass sophisticated anti-bot protections by mimicking real browser behavior. It's built on top of Chromium with Patchright and passes most online tests and protections.
+
+## Key Features
+
+The `StealthyFetcher` includes multiple layers of stealth capabilities:
+
+### Browser Fingerprinting Protection
+
+#### Canvas Fingerprinting
+
+Canvas fingerprinting is a common technique used to identify browsers. Scrapling can add random noise to canvas operations:
+
+```python
+from scrapling import StealthyFetcher
+
+response = StealthyFetcher.fetch(
+    'https://example.com',
+    hide_canvas=True  # Adds random noise to canvas operations
+)
+```
+
+**Source:** `scrapling/engines/_browsers/_stealth.py:64`
+
+#### WebGL Control
+
+Many WAFs check if WebGL is enabled. Disabling it can trigger detection:
+
+```python
+response = StealthyFetcher.fetch(
+    'https://example.com',
+    allow_webgl=True  # Keep enabled (default) to avoid detection
+)
+```
+
+<Warning>
+Disabling WebGL is **not recommended** as many WAFs now check if WebGL is enabled.
+</Warning>
+
+**Source:** `scrapling/engines/_browsers/_stealth.py:66`
+
+#### WebRTC IP Leak Prevention
+
+WebRTC can leak your real IP even when using proxies:
+
+```python
+response = StealthyFetcher.fetch(
+    'https://example.com',
+    block_webrtc=True,  # Forces WebRTC to respect proxy settings
+    proxy='http://proxy:8080'
+)
+```
+
+**Implementation details:** `scrapling/engines/_browsers/_base.py:485-489`
+
+### User Agent & Headers
+
+#### Automatic UA Generation
+
+Scrapling automatically generates convincing user agents that match the browser version:
+
+```python
+# Automatic UA matching the actual browser
+response = StealthyFetcher.fetch('https://example.com')
+
+# Or provide your own
+response = StealthyFetcher.fetch(
+    'https://example.com',
+    useragent='Mozilla/5.0 (Windows NT 10.0; Win64; x64)...'
+)
+```
+
+**Source:** `scrapling/engines/toolbelt/fingerprints.py:66-86`
+
+#### Google Search Referer
+
+Make requests appear as if they came from Google search:
+
+```python
+response = StealthyFetcher.fetch(
+    'https://example.com',
+    google_search=True  # Default: enabled
+)
+```
+
+This sets the referer to: `https://www.google.com/search?q=example`
+
+**Source:** `scrapling/engines/toolbelt/fingerprints.py:22-46`
+
+### Browser Configuration
+
+#### Stealth Arguments
+
+Scrapling uses 60+ browser flags to reduce detectability:
+
+```python
+# These flags are automatically applied:
+STEALTH_ARGS = (
+    '--disable-blink-features=AutomationControlled',
+    '--disable-dev-shm-usage',
+    '--disable-background-networking',
+    '--disable-client-side-phishing-detection',
+    # ... and 50+ more
+)
+```
+
+**Full list:** `scrapling/engines/constants.py:39-99`
+
+#### Real Chrome Mode
+
+Use your installed Chrome browser instead of Chromium:
+
+```python
+response = StealthyFetcher.fetch(
+    'https://example.com',
+    real_chrome=True  # Uses your Chrome installation
+)
+```
+
+**Source:** `scrapling/engines/_browsers/_base.py:428`
+
+## Advanced Techniques
+
+### Session Persistence
+
+Reuse browser sessions to maintain cookies and local storage:
+
+```python
+from scrapling import StealthySession
+
+with StealthySession(headless=True) as session:
+    # First request sets cookies
+    response1 = session.fetch('https://example.com/login')
+    
+    # Subsequent requests use same cookies
+    response2 = session.fetch('https://example.com/dashboard')
+```
+
+### Custom Browser Profile
+
+Use a persistent user data directory to save browser state:
+
+```python
+response = StealthyFetcher.fetch(
+    'https://example.com',
+    user_data_dir='/path/to/profile',  # Persistent browser profile
+    cookies=[{
+        'name': 'session',
+        'value': 'abc123',
+        'domain': 'example.com'
+    }]
+)
+```
+
+### Locale & Timezone
+
+Match your target audience's locale:
+
+```python
+response = StealthyFetcher.fetch(
+    'https://example.com',
+    locale='en-GB',
+    timezone_id='Europe/London'
+)
+```
+
+**Source:** `scrapling/engines/_browsers/_stealth.py:58-60`
+
+### Resource Blocking
+
+Speed up requests and reduce fingerprinting surface:
+
+```python
+response = StealthyFetcher.fetch(
+    'https://example.com',
+    disable_resources=True,  # Blocks fonts, images, media, etc.
+    blocked_domains={'analytics.com', 'tracker.com'}
+)
+```
+
+**Blocked resource types:** `scrapling/engines/constants.py:2-13`
+
+## Session Configuration
+
+For spiders, configure stealthy sessions globally:
+
+```python
+from scrapling import Spider, StealthySession
+from scrapling.fetchers import SessionManager
+
+class MySpider(Spider):
+    name = 'stealth_spider'
+    start_urls = ['https://example.com']
+    
+    def configure_sessions(self, manager):
+        manager.add('stealth', StealthySession(
+            headless=True,
+            hide_canvas=True,
+            block_webrtc=True,
+            disable_resources=True
+        ))
+    
+    async def parse(self, response):
+        # Your parsing logic
+        yield {'title': response.css('title::text').get()}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always Use Headless Mode in Production">
+    Headful mode is useful for debugging but headless is faster and more stable:
+    
+    ```python
+    response = StealthyFetcher.fetch(
+        'https://example.com',
+        headless=True  # Default
+    )
+    ```
+  </Accordion>
+
+  <Accordion title="Combine Multiple Techniques">
+    Layer multiple anti-detection features for best results:
+    
+    ```python
+    response = StealthyFetcher.fetch(
+        'https://example.com',
+        hide_canvas=True,
+        block_webrtc=True,
+        google_search=True,
+        disable_resources=True,
+        proxy='http://proxy:8080'
+    )
+    ```
+  </Accordion>
+
+  <Accordion title="Monitor for Detection">
+    Check response content for signs of blocking:
+    
+    ```python
+    response = StealthyFetcher.fetch('https://example.com')
+    
+    if 'captcha' in response.text.lower():
+        # Handle captcha challenge
+        pass
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Browser Control via CDP
+
+Connect to an existing browser via Chrome DevTools Protocol:
+
+```python
+response = StealthyFetcher.fetch(
+    'https://example.com',
+    cdp_url='ws://localhost:9222/devtools/browser/...'
+)
+```
+
+This allows you to control browsers running in Docker, remote servers, or with custom configurations.
+
+**Source:** `scrapling/engines/_browsers/_stealth.py:86-87`
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Cloudflare Turnstile" icon="shield-check" href="/guides/cloudflare-turnstile">
+    Bypass Cloudflare's Turnstile challenges
+  </Card>
+  <Card title="Handling Blocked Requests" icon="ban" href="/guides/handling-blocked-requests">
+    Detect and handle blocked requests
+  </Card>
+  <Card title="Performance Optimization" icon="gauge-high" href="/guides/performance-optimization">
+    Speed up your scraping
+  </Card>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/guides/error-handling">
+    Handle errors gracefully
+  </Card>
+</CardGroup>

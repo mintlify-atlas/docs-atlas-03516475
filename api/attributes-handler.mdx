@@ -1,0 +1,259 @@
+---
+title: AttributesHandler
+description: Read-only mapping for element attributes with enhanced functionality
+---
+
+The `AttributesHandler` class is a read-only mapping used for handling HTML element attributes. It provides a performance-optimized alternative to standard dictionaries while adding useful methods for attribute manipulation.
+
+## Overview
+
+`AttributesHandler` is returned by the `Selector.attrib` property and provides dictionary-like access to element attributes. All string values are automatically wrapped in `TextHandler` objects for enhanced text processing capabilities.
+
+## Constructor
+
+```python
+def __init__(self, mapping: Any = None, **kwargs: Any) -> None
+```
+
+<ParamField path="mapping" type="Any" default="None">
+  A dictionary or mapping object containing attribute key-value pairs. String values are automatically converted to `TextHandler` objects
+</ParamField>
+
+<ParamField path="**kwargs" type="Any">
+  Additional keyword arguments to add as attributes. String values are automatically converted to `TextHandler` objects
+</ParamField>
+
+**Example:**
+```python
+attrs = AttributesHandler({'class': 'button', 'id': 'submit'})
+attrs = AttributesHandler(class_='button', id='submit')  # Same result
+```
+
+## Properties
+
+### json_string
+
+```python
+@property
+def json_string(self) -> bytes
+```
+
+Convert current attributes to JSON bytes.
+
+**Returns:** JSON-encoded bytes representation of the attributes
+
+**Raises:** Exception if attributes are not JSON serializable
+
+**Example:**
+```python
+attrs = element.attrib
+json_bytes = attrs.json_string
+print(json_bytes.decode())
+# Output: {"class": "button primary", "id": "submit-btn"}
+```
+
+## Methods
+
+### get()
+
+```python
+def get(self, key: str, default: Any = None) -> TextHandler
+```
+
+Get an attribute value by key, with optional default.
+
+<ParamField path="key" type="str" required>
+  The attribute name to retrieve
+</ParamField>
+
+<ParamField path="default" type="Any" default="None">
+  The default value to return if the key doesn't exist
+</ParamField>
+
+**Returns:** A `TextHandler` containing the attribute value, or the default value if not found
+
+**Example:**
+```python
+attrs = element.attrib
+class_name = attrs.get('class')
+href = attrs.get('href', '/default')
+data_id = attrs.get('data-id', '0')
+```
+
+### search_values()
+
+```python
+def search_values(
+    self,
+    keyword: str,
+    partial: bool = False
+) -> Generator[AttributesHandler, None, None]
+```
+
+Search current attributes by values and return a dictionary of each matching item.
+
+<ParamField path="keyword" type="str" required>
+  The keyword to search for in the attribute values
+</ParamField>
+
+<ParamField path="partial" type="bool" default="false">
+  If True, searches for keyword contained in values. If False, requires exact match
+</ParamField>
+
+**Returns:** A generator yielding `AttributesHandler` objects for each match, each containing a single key-value pair
+
+**Example:**
+```python
+attrs = element.attrib
+# attrs = {'class': 'btn-primary', 'data-action': 'submit', 'data-id': '123'}
+
+# Exact match
+for match in attrs.search_values('submit'):
+    print(dict(match))
+# Output: {'data-action': 'submit'}
+
+# Partial match
+for match in attrs.search_values('btn', partial=True):
+    print(dict(match))
+# Output: {'class': 'btn-primary'}
+```
+
+## Dictionary-like Operations
+
+### Accessing Items
+
+```python
+# Direct access
+class_name = attrs['class']
+id_value = attrs['id']
+
+# Using get() with default
+href = attrs.get('href', '#')
+```
+
+### Checking Membership
+
+```python
+if 'class' in attrs:
+    print("Element has a class attribute")
+
+if 'href' not in attrs:
+    print("Element has no href attribute")
+```
+
+### Iteration
+
+```python
+# Iterate over keys
+for key in attrs:
+    print(f"{key}: {attrs[key]}")
+
+# Iterate over items
+for key, value in attrs.items():
+    print(f"{key}: {value}")
+
+# Get all keys
+keys = list(attrs.keys())
+
+# Get all values
+values = list(attrs.values())
+```
+
+### Length
+
+```python
+num_attrs = len(attrs)
+print(f"Element has {num_attrs} attributes")
+```
+
+## Converting to Dictionary
+
+Since `AttributesHandler` is read-only, if you need to modify attributes, convert it to a standard dictionary:
+
+```python
+attrs_dict = dict(element.attrib)
+attrs_dict['new-attr'] = 'value'
+attrs_dict['class'] = 'modified'
+```
+
+## TextHandler Integration
+
+All attribute values are `TextHandler` objects, providing access to enhanced string methods:
+
+```python
+attrs = element.attrib
+
+# Use TextHandler methods
+class_upper = attrs['class'].upper()
+data_clean = attrs.get('data-value', '').clean()
+
+# Regex operations
+ids = attrs.get('data-ids', '').re(r'\d+')
+
+# JSON parsing
+if 'data-json' in attrs:
+    data = attrs['data-json'].json()
+```
+
+## String Representation
+
+```python
+print(repr(attrs))
+# Output: AttributesHandler({'class': 'button', 'id': 'submit'})
+
+print(str(attrs))
+# Output: {'class': 'button', 'id': 'submit'}
+```
+
+## Common Use Cases
+
+### Extract CSS Classes
+
+```python
+element = page.css('div').first
+classes = element.attrib.get('class', '').split()
+if 'active' in classes:
+    print("Element is active")
+```
+
+### Get Data Attributes
+
+```python
+element = page.css('[data-product-id]').first
+product_id = element.attrib.get('data-product-id')
+price = element.attrib.get('data-price', '0')
+```
+
+### Search for Patterns
+
+```python
+element = page.css('a').first
+
+# Find all attributes containing URLs
+for attr in element.attrib.search_values('http', partial=True):
+    print(f"URL attribute: {dict(attr)}")
+```
+
+### Validate Attributes
+
+```python
+element = page.css('form').first
+attrs = element.attrib
+
+if 'action' in attrs and 'method' in attrs:
+    print(f"Form submits to: {attrs['action']}")
+    print(f"Method: {attrs['method'].upper()}")
+```
+
+## Notes
+
+- `AttributesHandler` is read-only and backed by `MappingProxyType` for performance
+- All string values are automatically wrapped in `TextHandler` for enhanced functionality
+- The class implements the `Mapping` interface, supporting all standard mapping operations
+- Converting to a dictionary with `dict()` is required if you need to modify attributes
+- Empty `AttributesHandler` evaluates to `False` in boolean contexts
+
+## See Also
+
+- [TextHandler](/api/text-handler) - For enhanced string operations on attribute values
+- [Selector](/api/selector) - The main class that uses `AttributesHandler` via the `attrib` property

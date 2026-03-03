@@ -1,0 +1,390 @@
+---
+title: Bypassing Cloudflare Turnstile
+description: Automatically solve Cloudflare Turnstile and Interstitial challenges
+---
+
+Scrapling can automatically solve Cloudflare's Turnstile challenges, including the "Just a moment..." interstitial page and interactive captchas.
+
+## Quick Start
+
+Enable Cloudflare solving with a single parameter:
+
+```python
+from scrapling import StealthyFetcher
+
+response = StealthyFetcher.fetch(
+    'https://cloudflare-protected-site.com',
+    solve_cloudflare=True
+)
+
+print(response.status)  # 200 - Challenge solved!
+print(response.text)    # Actual page content
+```
+
+<Warning>
+Cloudflare solving requires at least 60 seconds timeout. Scrapling automatically adjusts the timeout if you enable `solve_cloudflare=True`.
+</Warning>
+
+**Source:** `scrapling/engines/_browsers/_validators.py:131-133`
+
+## Challenge Types
+
+Scrapling detects and solves three types of Cloudflare challenges:
+
+### Non-Interactive Challenge
+
+The "Just a moment..." page that solves automatically:
+
+```python
+response = StealthyFetcher.fetch(
+    'https://example.com',
+    solve_cloudflare=True
+)
+```
+
+**Detection logic:** `scrapling/engines/_browsers/_base.py:520-533`
+
+**Implementation:**
+```python
+# Scrapling waits for the challenge to disappear
+while "<title>Just a moment...</title>" in page_content:
+    page.wait_for_timeout(1000)
+    page.wait_for_load_state()
+```
+
+**Source:** `scrapling/engines/_browsers/_stealth.py:124-130`
+
+### Managed Challenge
+
+Interactive checkbox challenge:
+
+```python
+response = StealthyFetcher.fetch(
+    'https://example.com',
+    solve_cloudflare=True,
+    headless=True  # Works in headless mode!
+)
+```
+
+Scrapling:
+1. Detects the challenge type from page content
+2. Locates the checkbox iframe
+3. Calculates precise click coordinates
+4. Clicks with human-like delay (100-200ms)
+5. Waits for network to settle
+
+**Source:** `scrapling/engines/_browsers/_stealth.py:132-186`
+
+### Interactive Challenge
+
+More complex interactive challenges are handled the same way:
+
+```python
+response = StealthyFetcher.fetch(
+    'https://example.com',
+    solve_cloudflare=True
+)
+```
+
+### Embedded Turnstile
+
+Turnstile widgets embedded directly in pages:
+
+```python
+# Detects embedded turnstile from script tags
+if selector.css('script[src*="challenges.cloudflare.com/turnstile/v"]'):
+    challenge_type = "embedded"
+```
+
+**Source:** `scrapling/engines/_browsers/_base.py:530-532`
+
+## How It Works
+
+### Challenge Detection
+
+Scrapling detects challenges by analyzing page content:
+
+```python
+def _detect_cloudflare(page_content: str) -> str | None:
+    """Detect Cloudflare challenge type"""
+    challenge_types = (
+        "non-interactive",
+        "managed",
+        "interactive",
+    )
+    for ctype in challenge_types:
+        if f"cType: '{ctype}'" in page_content:
+            return ctype
+    
+    # Check for embedded turnstile
+    if 'challenges.cloudflare.com/turnstile' in page_content:
+        return "embedded"
+    
+    return None
+```
+
+**Source:** `scrapling/engines/_browsers/_base.py:502-534`
+
+### Solving Process
+
+1. **Wait for page stability** - Ensure challenge is fully loaded
+2. **Detect challenge type** - Identify which Cloudflare challenge is present
+3. **Locate challenge iframe** - Find the Turnstile iframe using regex pattern
+4. **Calculate click coordinates** - Precise positioning with random offset
+5. **Human-like interaction** - Click with realistic delay
+6. **Wait for resolution** - Monitor page for challenge completion
+7. **Retry if needed** - Recursive solving for stubborn challenges
+
+**Main solver:** `scrapling/engines/_browsers/_stealth.py:111-186`
+
+### Click Coordinate Calculation
+
+```python
+# Find the challenge iframe
+iframe = page.frame(url=re.compile(
+    r"^https?://challenges\.cloudflare\.com/cdn-cgi/challenge-platform/.*"
+))
+
+# Get bounding box
+outer_box = iframe.frame_element().bounding_box()
+
+# Calculate click position with random offset (26-28, 25-27)
+captcha_x = outer_box["x"] + randint(26, 28)
+captcha_y = outer_box["y"] + randint(25, 27)
+
+# Click with human-like delay
+page.mouse.click(captcha_x, captcha_y, delay=randint(100, 200))
+```
+
+**Source:** `scrapling/engines/_browsers/_stealth.py:159-163`
+
+## Usage Patterns
+
+### One-off Requests
+
+```python
+from scrapling import StealthyFetcher
+
+response = StealthyFetcher.fetch(
+    'https://cloudflare-site.com',
+    solve_cloudflare=True,
+    timeout=60000  # At least 60 seconds
+)
+```
+
+### Session-based Scraping
+
+```python
+from scrapling import StealthySession
+
+with StealthySession(solve_cloudflare=True) as session:
+    # First request solves challenge and gets cookies
+    response1 = session.fetch('https://example.com/page1')
+    
+    # Subsequent requests use same cookies (no re-solving)
+    response2 = session.fetch('https://example.com/page2')
+    response3 = session.fetch('https://example.com/page3')
+```
+
+### Spider Integration
+
+```python
+from scrapling import Spider, StealthySession
+
+class CloudflareSpider(Spider):
+    name = 'cf_spider'
+    start_urls = ['https://cloudflare-protected.com']
+    
+    def configure_sessions(self, manager):
+        manager.add('default', StealthySession(
+            solve_cloudflare=True,
+            timeout=60000,
+            headless=True
+        ))
+    
+    async def parse(self, response):
+        # Challenge already solved!
+        yield {'title': response.css('title::text').get()}
+        
+        # Follow links - cookies preserved
+        for link in response.css('a::attr(href)').getall():
+            yield response.follow(link, callback=self.parse_item)
+```
+
+### Async Usage
+
+```python
+from scrapling import AsyncStealthySession
+import asyncio
+
+async def scrape():
+    async with AsyncStealthySession(solve_cloudflare=True) as session:
+        response = await session.fetch('https://example.com')
+        return response.text
+
+result = asyncio.run(scrape())
+```
+
+## Advanced Configuration
+
+### Custom Timeout
+
+Some challenges take longer to solve:
+
+```python
+response = StealthyFetcher.fetch(
+    'https://example.com',
+    solve_cloudflare=True,
+    timeout=90000  # 90 seconds for slower challenges
+)
+```
+
+### With Proxy Rotation
+
+```python
+from scrapling import StealthySession, ProxyRotator
+
+rotator = ProxyRotator([
+    'http://proxy1:8080',
+    'http://proxy2:8080',
+])
+
+with StealthySession(
+    solve_cloudflare=True,
+    proxy_rotator=rotator
+) as session:
+    response = session.fetch('https://example.com')
+```
+
+### Page Actions After Solving
+
+Perform actions after the challenge is solved:
+
+```python
+def after_solve(page):
+    # Cloudflare is already solved at this point
+    page.click('button#load-more')
+    page.wait_for_timeout(2000)
+
+response = StealthyFetcher.fetch(
+    'https://example.com',
+    solve_cloudflare=True,
+    page_action=after_solve
+)
+```
+
+**Note:** `page_action` runs **after** Cloudflare solving completes.
+
+**Source:** `scrapling/engines/_browsers/_stealth.py:243-252`
+
+### Wait for Specific Content
+
+Combine with selectors to wait for content after solving:
+
+```python
+response = StealthyFetcher.fetch(
+    'https://example.com',
+    solve_cloudflare=True,
+    wait_selector='div.content',
+    wait_selector_state='visible'
+)
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Challenge Not Detected">
+    Scrapling logs challenge detection:
+    
+    ```python
+    # Check logs for:
+    # "No Cloudflare challenge found."
+    # "The turnstile version discovered is 'managed'"
+    ```
+    
+    If no challenge is found, the page may not be protected or uses a different system.
+  </Accordion>
+
+  <Accordion title="Timeout Errors">
+    Increase timeout for slow challenges:
+    
+    ```python
+    response = StealthyFetcher.fetch(
+        'https://example.com',
+        solve_cloudflare=True,
+        timeout=120000  # 2 minutes
+    )
+    ```
+  </Accordion>
+
+  <Accordion title="Challenge Still Present">
+    The solver retries recursively:
+    
+    ```python
+    # After 10 seconds, if challenge persists:
+    if "<title>Just a moment...</title>" in page_content:
+        log.info("Cloudflare captcha is still present, solving again")
+        return self._cloudflare_solver(page)  # Recursive retry
+    ```
+    
+    **Source:** `scrapling/engines/_browsers/_stealth.py:184-186`
+  </Accordion>
+
+  <Accordion title="Multiple Challenges">
+    Some sites show multiple challenges. Use sessions to maintain cookies:
+    
+    ```python
+    with StealthySession(solve_cloudflare=True) as session:
+        # Only first request solves challenge
+        for url in urls:
+            response = session.fetch(url)
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Limitations
+
+- **CAPTCHA challenges** - Image-based CAPTCHAs require manual solving or third-party services
+- **Rate limiting** - Solving challenges too frequently may trigger additional protections
+- **WAF rules** - Some sites use custom WAF rules beyond Cloudflare's standard challenges
+
+## Best Practices
+
+1. **Use sessions** - Reuse cookies across requests to avoid re-solving
+2. **Set adequate timeout** - Minimum 60 seconds, 90-120 seconds recommended
+3. **Monitor logs** - Check for challenge detection and solving status
+4. **Combine with other features** - Use with `hide_canvas`, `block_webrtc`, etc.
+5. **Respect rate limits** - Add delays between requests
+
+```python
+# Recommended configuration
+with StealthySession(
+    solve_cloudflare=True,
+    timeout=90000,
+    hide_canvas=True,
+    block_webrtc=True,
+    google_search=True,
+    disable_resources=True
+) as session:
+    for url in urls:
+        response = session.fetch(url)
+        # Process response
+        await asyncio.sleep(2)  # Respect rate limits
+```
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Anti-Bot Bypass" icon="user-secret" href="/guides/anti-bot-bypass">
+    General anti-bot bypass strategies
+  </Card>
+  <Card title="Handling Blocked Requests" icon="ban" href="/guides/handling-blocked-requests">
+    Detect and retry blocked requests
+  </Card>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/guides/error-handling">
+    Handle errors and timeouts
+  </Card>
+  <Card title="Performance Tips" icon="gauge-high" href="/guides/performance-optimization">
+    Optimize scraping performance
+  </Card>
+</CardGroup>

@@ -1,0 +1,428 @@
+---
+title: CrawlResult
+description: Container for spider crawl results and statistics
+---
+
+The `CrawlResult` class represents the complete result from a spider run, including scraped items, statistics, and pause state.
+
+## Class Definition
+
+```python
+from scrapling.spiders.result import CrawlResult
+
+@dataclass
+class CrawlResult:
+    """Complete result from a spider run."""
+```
+
+## Attributes
+
+<ParamField path="stats" type="CrawlStats" required>
+  Detailed statistics about the crawl (requests, items, timing, etc.).
+</ParamField>
+
+<ParamField path="items" type="ItemList" required>
+  List of scraped items with export capabilities.
+</ParamField>
+
+<ParamField path="paused" type="bool" default="False">
+  Whether the crawl was paused (True) or completed normally (False).
+</ParamField>
+
+## Properties
+
+### completed
+
+```python
+@property
+def completed(self) -> bool
+```
+
+Returns True if the crawl completed normally (not paused).
+
+**Returns:** `not self.paused`
+
+## Special Methods
+
+### Length
+
+```python
+def __len__(self) -> int
+```
+
+Returns the number of scraped items.
+
+**Example:**
+```python
+result = spider.start()
+print(f"Scraped {len(result)} items")  # Same as len(result.items)
+```
+
+### Iteration
+
+```python
+def __iter__(self) -> Iterator[dict[str, Any]]
+```
+
+Iterate over scraped items.
+
+**Example:**
+```python
+result = spider.start()
+for item in result:
+    print(item)  # Same as iterating result.items
+```
+
+## ItemList
+
+The `items` attribute is an `ItemList` - a list subclass with export methods.
+
+### to_json
+
+```python
+def to_json(
+    self,
+    path: Union[str, Path],
+    *,
+    indent: bool = False
+)
+```
+
+Export items to a JSON file.
+
+<ParamField path="path" type="str | Path" required>
+  Path to the output file.
+</ParamField>
+
+<ParamField path="indent" type="bool" default="False">
+  Pretty-print with 2-space indentation (slightly slower).
+</ParamField>
+
+**Example:**
+```python
+result = spider.start()
+result.items.to_json("output.json", indent=True)
+```
+
+### to_jsonl
+
+```python
+def to_jsonl(self, path: Union[str, Path])
+```
+
+Export items as JSON Lines (one JSON object per line).
+
+<ParamField path="path" type="str | Path" required>
+  Path to the output file.
+</ParamField>
+
+**Example:**
+```python
+result = spider.start()
+result.items.to_jsonl("output.jsonl")
+```
+
+## CrawlStats
+
+The `stats` attribute contains detailed crawl metrics.
+
+### Attributes
+
+<ParamField path="requests_count" type="int" default="0">
+  Total number of successful requests made.
+</ParamField>
+
+<ParamField path="concurrent_requests" type="int" default="0">
+  Maximum concurrent requests setting.
+</ParamField>
+
+<ParamField path="concurrent_requests_per_domain" type="int" default="0">
+  Maximum concurrent requests per domain setting.
+</ParamField>
+
+<ParamField path="failed_requests_count" type="int" default="0">
+  Number of failed requests (exceptions during fetch).
+</ParamField>
+
+<ParamField path="offsite_requests_count" type="int" default="0">
+  Number of requests filtered due to `allowed_domains`.
+</ParamField>
+
+<ParamField path="blocked_requests_count" type="int" default="0">
+  Number of requests detected as blocked.
+</ParamField>
+
+<ParamField path="response_bytes" type="int" default="0">
+  Total bytes downloaded.
+</ParamField>
+
+<ParamField path="items_scraped" type="int" default="0">
+  Number of items successfully scraped.
+</ParamField>
+
+<ParamField path="items_dropped" type="int" default="0">
+  Number of items dropped by `on_scraped_item()`.
+</ParamField>
+
+<ParamField path="start_time" type="float" default="0.0">
+  Timestamp when crawl started.
+</ParamField>
+
+<ParamField path="end_time" type="float" default="0.0">
+  Timestamp when crawl ended.
+</ParamField>
+
+<ParamField path="download_delay" type="float" default="0.0">
+  Download delay setting.
+</ParamField>
+
+<ParamField path="custom_stats" type="Dict" default="{}">
+  User-defined custom statistics.
+</ParamField>
+
+<ParamField path="response_status_count" type="Dict" default="{}">
+  Count of responses by status code (e.g., `{"status_200": 42, "status_404": 3}`).
+</ParamField>
+
+<ParamField path="domains_response_bytes" type="Dict" default="{}">
+  Bytes downloaded per domain.
+</ParamField>
+
+<ParamField path="sessions_requests_count" type="Dict" default="{}">
+  Requests made per session ID.
+</ParamField>
+
+<ParamField path="proxies" type="List[str | Dict | Tuple]" default="[]">
+  List of proxies used during the crawl.
+</ParamField>
+
+<ParamField path="log_levels_counter" type="Dict" default="{}">
+  Count of log messages by level (debug, info, warning, error, critical).
+</ParamField>
+
+### Properties
+
+#### elapsed_seconds
+
+```python
+@property
+def elapsed_seconds(self) -> float
+```
+
+Total crawl duration in seconds.
+
+**Returns:** `end_time - start_time`
+
+#### requests_per_second
+
+```python
+@property
+def requests_per_second(self) -> float
+```
+
+Average request rate.
+
+**Returns:** `requests_count / elapsed_seconds` (or 0.0 if elapsed_seconds == 0)
+
+### Methods
+
+#### to_dict
+
+```python
+def to_dict(self) -> dict[str, Any]
+```
+
+Convert statistics to a dictionary.
+
+**Returns:** Dictionary with formatted statistics
+
+**Example:**
+```python
+result = spider.start()
+stats_dict = result.stats.to_dict()
+print(stats_dict)
+# {
+#     "items_scraped": 150,
+#     "items_dropped": 5,
+#     "elapsed_seconds": 12.34,
+#     "requests_count": 200,
+#     "requests_per_second": 16.21,
+#     ...
+# }
+```
+
+## Usage Examples
+
+### Basic Usage
+
+```python
+from scrapling.spiders import Spider
+
+class MySpider(Spider):
+    name = "example"
+    start_urls = ["https://example.com"]
+    
+    async def parse(self, response):
+        yield {"url": response.url}
+
+# Run spider
+spider = MySpider()
+result = spider.start()
+
+# Access results
+print(f"Completed: {result.completed}")
+print(f"Items: {len(result)}")
+print(f"Duration: {result.stats.elapsed_seconds:.2f}s")
+print(f"Rate: {result.stats.requests_per_second:.2f} req/s")
+```
+
+### Export Results
+
+```python
+result = spider.start()
+
+# Export as JSON
+result.items.to_json("output/items.json", indent=True)
+
+# Export as JSONL
+result.items.to_jsonl("output/items.jsonl")
+
+print(f"Saved {len(result)} items")
+```
+
+### Iterate Items
+
+```python
+result = spider.start()
+
+# Process each item
+for item in result:
+    print(f"Title: {item.get('title')}")
+    print(f"URL: {item.get('url')}")
+```
+
+### Detailed Statistics
+
+```python
+result = spider.start()
+stats = result.stats
+
+print(f"Requests: {stats.requests_count}")
+print(f"Failed: {stats.failed_requests_count}")
+print(f"Blocked: {stats.blocked_requests_count}")
+print(f"Items: {stats.items_scraped}")
+print(f"Dropped: {stats.items_dropped}")
+print(f"Bandwidth: {stats.response_bytes / 1024 / 1024:.2f} MB")
+print(f"Status codes: {stats.response_status_count}")
+print(f"Per domain: {stats.domains_response_bytes}")
+```
+
+### Handle Paused Crawls
+
+```python
+spider = MySpider(crawldir="./checkpoints")
+result = spider.start()
+
+if result.paused:
+    print("Crawl was paused. Resume by running again.")
+    print(f"Scraped {len(result)} items before pause")
+else:
+    print("Crawl completed successfully")
+    result.items.to_json("final_results.json")
+```
+
+### Custom Statistics
+
+```python
+class MySpider(Spider):
+    async def parse(self, response):
+        # Track custom metrics
+        self._engine.stats.custom_stats["pages_with_images"] = \
+            self._engine.stats.custom_stats.get("pages_with_images", 0) + 1
+        
+        yield {"url": response.url}
+
+result = spider.start()
+print(result.stats.custom_stats)  # {"pages_with_images": 42}
+```
+
+### Performance Analysis
+
+```python
+result = spider.start()
+stats = result.stats
+
+# Calculate efficiency metrics
+if stats.requests_count > 0:
+    success_rate = (stats.requests_count - stats.failed_requests_count) / stats.requests_count * 100
+    print(f"Success rate: {success_rate:.1f}%")
+
+if stats.items_scraped > 0:
+    avg_bytes_per_item = stats.response_bytes / stats.items_scraped
+    print(f"Avg bytes per item: {avg_bytes_per_item:.0f}")
+
+# Session performance
+for session_id, count in stats.sessions_requests_count.items():
+    print(f"Session '{session_id}': {count} requests")
+```
+
+### Logging Analysis
+
+```python
+result = spider.start()
+logs = result.stats.log_levels_counter
+
+print(f"Debug: {logs.get('debug', 0)}")
+print(f"Info: {logs.get('info', 0)}")
+print(f"Warnings: {logs.get('warning', 0)}")
+print(f"Errors: {logs.get('error', 0)}")
+print(f"Critical: {logs.get('critical', 0)}")
+```
+
+### Complete Example
+
+```python
+import json
+from pathlib import Path
+from scrapling.spiders import Spider
+
+class ProductSpider(Spider):
+    name = "products"
+    start_urls = ["https://store.example.com/products"]
+    concurrent_requests = 10
+    
+    async def parse(self, response):
+        for product in response.css(".product"):
+            yield {
+                "name": product.css(".name::text").get(),
+                "price": product.css(".price::text").get(),
+            }
+
+# Run spider with checkpoints
+spider = ProductSpider(crawldir="./checkpoints")
+result = spider.start(use_uvloop=True)
+
+# Create output directory
+output_dir = Path("output")
+output_dir.mkdir(exist_ok=True)
+
+# Save items
+if result.completed:
+    result.items.to_json(output_dir / "products.json", indent=True)
+    result.items.to_jsonl(output_dir / "products.jsonl")
+    
+    # Save statistics
+    with open(output_dir / "stats.json", "w") as f:
+        json.dump(result.stats.to_dict(), f, indent=2)
+    
+    print(f"✓ Scraped {len(result)} products in {result.stats.elapsed_seconds:.1f}s")
+    print(f"✓ Rate: {result.stats.requests_per_second:.1f} req/s")
+else:
+    print(f"✗ Crawl paused after scraping {len(result)} products")
+    print("  Run again to resume")
+```
+
+## See Also
+
+- [Spider](/api/spider) - Running spiders and getting results
+- [CrawlerEngine](/api/crawler-engine) - Understanding statistics collection

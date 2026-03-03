@@ -1,0 +1,341 @@
+---
+title: TextHandler
+description: Enhanced string class with additional text processing functionality
+---
+
+The `TextHandler` class extends Python's standard `str` class to provide enhanced text processing capabilities including regex operations, JSON parsing, cleaning, and more.
+
+## Overview
+
+`TextHandler` is used throughout Scrapling to represent text content. It's returned by properties like `Selector.text` and methods like `get()`, `re()`, etc. It maintains all standard string functionality while adding powerful text manipulation methods.
+
+## String Methods
+
+All standard Python string methods are available and return `TextHandler` objects:
+
+- `strip()`, `lstrip()`, `rstrip()` - Remove whitespace
+- `upper()`, `lower()`, `capitalize()`, `title()`, `swapcase()`, `casefold()` - Case conversion
+- `replace()` - Replace substrings
+- `split()` - Split into list (returns list of `TextHandler` objects)
+- `join()` - Join iterable
+- `center()`, `ljust()`, `rjust()`, `zfill()` - Alignment and padding
+- `expandtabs()`, `translate()` - Text transformation
+- `format()`, `format_map()` - String formatting
+
+And many more standard string methods.
+
+## Enhanced Methods
+
+### clean()
+
+```python
+def clean(self, remove_entities: bool = False) -> TextHandler
+```
+
+Return a new version of the string after removing all white spaces and consecutive spaces.
+
+<ParamField path="remove_entities" type="bool" default="false">
+  If True, also replaces HTML entities with their corresponding characters
+</ParamField>
+
+**Returns:** A cleaned `TextHandler` object
+
+**Example:**
+```python
+text = TextHandler("  Hello\n\n  world  \t  ")
+clean = text.clean()
+print(clean)  # Output: "Hello world"
+
+html_text = TextHandler("Hello&nbsp;&amp;&nbsp;world")
+clean = html_text.clean(remove_entities=True)
+print(clean)  # Output: "Hello & world"
+```
+
+### sort()
+
+```python
+def sort(self, reverse: bool = False) -> TextHandler
+```
+
+Return a sorted version of the string.
+
+<ParamField path="reverse" type="bool" default="false">
+  If True, sort in descending order
+</ParamField>
+
+**Returns:** A `TextHandler` with characters sorted
+
+**Example:**
+```python
+text = TextHandler("dcba")
+sorted_text = text.sort()
+print(sorted_text)  # Output: "abcd"
+
+reverse_sorted = text.sort(reverse=True)
+print(reverse_sorted)  # Output: "dcba"
+```
+
+### json()
+
+```python
+def json(self) -> Dict
+```
+
+Return JSON response if the string is valid JSON.
+
+**Returns:** A dictionary parsed from the JSON string
+
+**Raises:** Exception if the string is not valid JSON
+
+**Example:**
+```python
+json_str = TextHandler('{"name": "John", "age": 30}')
+data = json_str.json()
+print(data['name'])  # Output: John
+print(data['age'])   # Output: 30
+```
+
+### re()
+
+```python
+def re(
+    self,
+    regex: str | Pattern,
+    replace_entities: bool = True,
+    clean_match: bool = False,
+    case_sensitive: bool = True,
+    check_match: bool = False,
+) -> TextHandlers | bool
+```
+
+Apply the given regex to the current text and return a list of strings with the matches.
+
+<ParamField path="regex" type="str | Pattern" required>
+  Can be either a compiled regular expression or a string
+</ParamField>
+
+<ParamField path="replace_entities" type="bool" default="true">
+  If enabled, character entity references are replaced by their corresponding character in results
+</ParamField>
+
+<ParamField path="clean_match" type="bool" default="false">
+  If enabled, ignores all whitespaces and consecutive spaces while matching
+</ParamField>
+
+<ParamField path="case_sensitive" type="bool" default="true">
+  If disabled, the regex will ignore letter case while matching
+</ParamField>
+
+<ParamField path="check_match" type="bool" default="false">
+  Used to quickly check if this regex matches or not without any operations on the results. Returns boolean instead of matches
+</ParamField>
+
+**Returns:** A `TextHandlers` list of matches, or a boolean if `check_match=True`
+
+**Example:**
+```python
+text = TextHandler("Price: $19.99, Discount: $5.00")
+prices = text.re(r'\$([\d.]+)')
+print(prices)  # Output: ['19.99', '5.00']
+
+# Check if pattern exists
+has_price = text.re(r'\$\d+', check_match=True)
+print(has_price)  # Output: True
+
+# Case insensitive
+text = TextHandler("Hello WORLD")
+matches = text.re(r'hello', case_sensitive=False)
+print(matches)  # Output: ['Hello']
+```
+
+### re_first()
+
+```python
+def re_first(
+    self,
+    regex: str | Pattern,
+    default: Any = None,
+    replace_entities: bool = True,
+    clean_match: bool = False,
+    case_sensitive: bool = True,
+) -> TextHandler
+```
+
+Apply the given regex to text and return the first match if found, otherwise return the default value.
+
+<ParamField path="regex" type="str | Pattern" required>
+  Can be either a compiled regular expression or a string
+</ParamField>
+
+<ParamField path="default" type="Any" default="None">
+  The default value to be returned if there is no match
+</ParamField>
+
+<ParamField path="replace_entities" type="bool" default="true">
+  If enabled, character entity references are replaced by their corresponding character
+</ParamField>
+
+<ParamField path="clean_match" type="bool" default="false">
+  If enabled, ignores all whitespaces and consecutive spaces while matching
+</ParamField>
+
+<ParamField path="case_sensitive" type="bool" default="true">
+  If disabled, the regex will ignore letter case while matching
+</ParamField>
+
+**Returns:** A `TextHandler` with the first match or the default value
+
+**Example:**
+```python
+text = TextHandler("Product ID: ABC123")
+product_id = text.re_first(r'ID: ([A-Z0-9]+)')
+print(product_id)  # Output: ABC123
+
+# With default
+text = TextHandler("No price here")
+price = text.re_first(r'\$(\d+)', '0.00')
+print(price)  # Output: 0.00
+```
+
+## Compatibility Methods
+
+For compatibility with Scrapy/Parsel:
+
+### get()
+
+```python
+def get(self, default=None) -> TextHandler
+```
+
+Returns self (for Scrapy/Parsel compatibility).
+
+**Example:**
+```python
+text = TextHandler("Hello")
+result = text.get()
+print(result)  # Output: Hello
+```
+
+### get_all()
+
+```python
+def get_all(self) -> TextHandler
+```
+
+Returns self (for Scrapy/Parsel compatibility).
+
+**Example:**
+```python
+text = TextHandler("Hello")
+result = text.get_all()
+print(result)  # Output: Hello
+```
+
+### Aliases
+
+- `extract()` - alias for `get_all()`
+- `extract_first()` - alias for `get()`
+
+## Common Use Cases
+
+### Extract Numbers
+
+```python
+text = TextHandler("Total: 1,234.56 USD")
+number = text.re_first(r'([\d,]+\.\d+)').replace(',', '')
+price = float(number)
+print(price)  # Output: 1234.56
+```
+
+### Clean and Normalize Text
+
+```python
+text = TextHandler("  Product\n  Name:   \t  Widget  ")
+clean = text.clean()
+print(clean)  # Output: "Product Name: Widget"
+```
+
+### Parse Structured Data
+
+```python
+json_text = TextHandler('{"items": [{"id": 1}, {"id": 2}]}')
+data = json_text.json()
+for item in data['items']:
+    print(f"ID: {item['id']}")
+```
+
+### Extract Multiple Values
+
+```python
+text = TextHandler("Colors: red, blue, green")
+colors = text.re(r'(\w+)(?:,|$)')
+print(colors)  # Output: ['red', 'blue', 'green']
+```
+
+### Case-Insensitive Search
+
+```python
+text = TextHandler("The Quick Brown Fox")
+has_fox = text.re(r'fox', case_sensitive=False, check_match=True)
+print(has_fox)  # Output: True
+```
+
+### Handle HTML Entities
+
+```python
+text = TextHandler("Price: &pound;19.99 &amp; free shipping")
+clean = text.clean(remove_entities=True)
+print(clean)  # Output: "Price: £19.99 & free shipping"
+```
+
+## Indexing and Slicing
+
+```python
+text = TextHandler("Hello World")
+
+# Indexing returns TextHandler
+first = text[0]
+print(first)  # Output: H
+print(type(first))  # Output: <class 'TextHandler'>
+
+# Slicing returns TextHandler
+word = text[:5]
+print(word)  # Output: Hello
+print(type(word))  # Output: <class 'TextHandler'>
+```
+
+## String Operations
+
+```python
+text = TextHandler("Hello")
+
+# Concatenation
+greeting = text + " World"
+print(greeting)  # Output: Hello World
+
+# Repetition
+repeated = text * 3
+print(repeated)  # Output: HelloHelloHello
+
+# Membership
+print('ell' in text)  # Output: True
+
+# Comparison
+print(text == "Hello")  # Output: True
+print(text < "World")   # Output: True
+```
+
+## Notes
+
+- `TextHandler` is a subclass of `str`, so all standard string operations work
+- Methods that modify strings return new `TextHandler` objects (strings are immutable)
+- The `clean()` method is particularly useful for normalizing scraped text
+- Regex methods use the `re` module internally and support all Python regex features
+- JSON parsing uses `orjson` for high performance
+- HTML entity replacement uses the `w3lib` library
+
+## See Also
+
+- [Selectors](/api/selectors) - List container that uses `TextHandler` for text operations
+- [Selector](/api/selector) - Uses `TextHandler` for text content via the `text` property
+- [AttributesHandler](/api/attributes-handler) - Uses `TextHandler` for attribute values

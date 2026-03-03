@@ -1,0 +1,484 @@
+---
+title: Sessions
+description: Manage persistent sessions and cookies across multiple requests
+---
+
+Sessions allow you to maintain state, cookies, and connection pooling across multiple requests. Scrapling provides three session types corresponding to each fetcher: `FetcherSession`, `StealthySession`, and `DynamicSession`.
+
+## Session Types Overview
+
+| Session | Fetcher | Use Case | Maintains |
+|---------|---------|----------|----------|
+| **FetcherSession** | Fetcher | HTTP requests | Cookies, connections |
+| **StealthySession** | StealthyFetcher | Anti-bot bypass | Browser context, cookies |
+| **DynamicSession** | DynamicFetcher | Browser automation | Browser context, cookies |
+
+## FetcherSession (HTTP)
+
+Fast HTTP sessions with browser impersonation.
+
+### Basic Usage
+
+```python
+from scrapling.fetchers import FetcherSession
+
+with FetcherSession(impersonate='chrome') as session:
+    # First request
+    page1 = session.get('https://quotes.toscrape.com/')
+    
+    # Second request (cookies and connections maintained)
+    page2 = session.get('https://quotes.toscrape.com/page/2/')
+    
+    # POST request
+    response = session.post(
+        'https://httpbin.org/post',
+        data={'key': 'value'}
+    )
+```
+
+### Configuration Options
+
+```python
+from scrapling.fetchers import FetcherSession
+
+with FetcherSession(
+    # Browser impersonation
+    impersonate='chrome',              # Browser to impersonate
+    stealthy_headers=True,             # Generate realistic headers
+    
+    # Default settings
+    headers={'Authorization': 'Bearer token'},
+    timeout=60,                        # Default timeout in seconds
+    retries=3,                         # Number of retries
+    retry_delay=2,                     # Delay between retries (seconds)
+    
+    # SSL/TLS
+    verify=True,                       # Verify SSL certificates
+    cert=None,                         # Client certificate
+    
+    # Redirects
+    follow_redirects=True,             # Follow redirects
+    max_redirects=30,                  # Max redirect count
+    
+    # HTTP version
+    http3=False,                       # Use HTTP/3
+    
+    # Proxy
+    proxy='http://proxy:8080',         # Default proxy
+    proxy_auth=('user', 'pass'),       # Proxy authentication
+) as session:
+    page = session.get('https://example.com')
+```
+
+### Async Context Support
+
+FetcherSession is context-aware and works in both sync and async:
+
+```python
+import asyncio
+from scrapling.fetchers import FetcherSession
+
+async def scrape():
+    async with FetcherSession(http3=True) as session:
+        # All methods are awaitable in async context
+        page1 = await session.get('https://quotes.toscrape.com/')
+        page2 = await session.get('https://quotes.toscrape.com/page/2/')
+        
+        # POST request
+        response = await session.post(
+            'https://httpbin.org/post',
+            json={'data': 'value'}
+        )
+
+asyncio.run(scrape())
+```
+
+### Per-Request Overrides
+
+```python
+with FetcherSession(impersonate='chrome', timeout=30) as session:
+    # Use session defaults
+    page1 = session.get('https://example.com')
+    
+    # Override specific settings
+    page2 = session.get(
+        'https://slow-site.com',
+        timeout=120,                   # Override timeout
+        impersonate='firefox135',      # Different browser
+        headers={'Custom': 'header'},  # Additional headers
+    )
+```
+
+## StealthySession (Anti-Bot)
+
+Persistent browser session with anti-bot capabilities.
+
+### Basic Usage
+
+```python
+from scrapling.fetchers import StealthySession
+
+with StealthySession(
+    headless=True,
+    solve_cloudflare=True
+) as session:
+    # First request (solves Cloudflare, saves cookies)
+    page1 = session.fetch('https://protected-site.com/')
+    
+    # Second request (cookies maintained)
+    page2 = session.fetch('https://protected-site.com/data')
+    
+    # Third request
+    page3 = session.fetch('https://protected-site.com/more-data')
+```
+
+### Configuration Options
+
+```python
+from scrapling.fetchers import StealthySession
+
+with StealthySession(
+    # Browser mode
+    headless=True,
+    real_chrome=False,
+    
+    # Anti-detection
+    solve_cloudflare=True,
+    hide_canvas=True,
+    block_webrtc=True,
+    allow_webgl=True,
+    
+    # Default timing
+    timeout=30000,                     # milliseconds
+    network_idle=False,
+    load_dom=True,
+    
+    # Headers
+    google_search=True,
+    extra_headers={'Custom': 'value'},
+    useragent='Mozilla/5.0...',
+    
+    # Resources
+    disable_resources=False,
+    blocked_domains={'ads.com'},
+    
+    # Persistence
+    user_data_dir='./browser_profile',
+    cookies=[{'name': 'session', 'value': 'xyz', 'domain': 'example.com'}],
+    
+    # Locale
+    locale='en-US',
+    timezone_id='America/New_York',
+    
+    # Advanced
+    proxy='http://proxy:8080',
+    init_script='./init.js',
+) as session:
+    page = session.fetch('https://example.com')
+```
+
+### Persistent Browser Profile
+
+Maintain browser state across script runs:
+
+```python
+with StealthySession(
+    headless=True,
+    user_data_dir='./my_browser_profile',  # Persistent directory
+    solve_cloudflare=True
+) as session:
+    # First run: solve Cloudflare, save to profile
+    page = session.fetch('https://protected-site.com')
+    
+# Next run: cookies and state loaded from profile
+with StealthySession(
+    headless=True,
+    user_data_dir='./my_browser_profile'
+) as session:
+    # No Cloudflare challenge - cookies still valid
+    page = session.fetch('https://protected-site.com/data')
+```
+
+### Async Stealth Session
+
+```python
+import asyncio
+from scrapling.fetchers import AsyncStealthySession
+
+async def scrape():
+    async with AsyncStealthySession(
+        headless=True,
+        max_pages=3  # Pool of 3 browser tabs
+    ) as session:
+        # Concurrent requests
+        tasks = [
+            session.fetch('https://example.com/page1'),
+            session.fetch('https://example.com/page2'),
+            session.fetch('https://example.com/page3'),
+        ]
+        results = await asyncio.gather(*tasks)
+        
+        # Check pool stats
+        stats = session.get_pool_stats()
+        print(f"Busy: {stats['busy']}, Free: {stats['free']}")
+
+asyncio.run(scrape())
+```
+
+## DynamicSession (Browser Automation)
+
+Persistent browser session for automation.
+
+### Basic Usage
+
+```python
+from scrapling.fetchers import DynamicSession
+
+with DynamicSession(
+    headless=True,
+    disable_resources=True,
+    network_idle=True
+) as session:
+    # Login
+    page1 = session.fetch('https://example.com/login', load_dom=False)
+    
+    # Access protected page
+    page2 = session.fetch('https://example.com/dashboard')
+    
+    # Another page (cookies maintained)
+    page3 = session.fetch('https://example.com/data')
+```
+
+### Configuration Options
+
+```python
+from scrapling.fetchers import DynamicSession
+
+with DynamicSession(
+    # Browser mode
+    headless=True,
+    real_chrome=False,
+    
+    # Timing
+    timeout=30000,
+    network_idle=False,
+    load_dom=True,
+    
+    # Headers
+    google_search=True,
+    extra_headers={'Authorization': 'Bearer token'},
+    useragent='Mozilla/5.0...',
+    
+    # Resources
+    disable_resources=False,
+    blocked_domains={'analytics.com'},
+    
+    # State
+    cookies=[{'name': 'token', 'value': 'xyz', 'domain': 'example.com'}],
+    init_script='./init.js',
+    
+    # Locale
+    locale='en-GB',
+    
+    # Advanced
+    proxy='http://proxy:8080',
+    cdp_url='http://localhost:9222',
+) as session:
+    page = session.fetch('https://example.com')
+```
+
+### Async Dynamic Session
+
+```python
+import asyncio
+from scrapling.fetchers import AsyncDynamicSession
+
+async def scrape():
+    async with AsyncDynamicSession(
+        headless=True,
+        max_pages=5,  # Pool of 5 browser tabs
+        disable_resources=True
+    ) as session:
+        urls = [f'https://example.com/page{i}' for i in range(10)]
+        
+        # Concurrent requests with tab reuse
+        tasks = [session.fetch(url) for url in urls]
+        results = await asyncio.gather(*tasks)
+        
+        # Pool automatically manages tab reuse
+        print(session.get_pool_stats())
+
+asyncio.run(scrape())
+```
+
+## Session Lifecycle
+
+### Context Manager (Recommended)
+
+Always use context managers to ensure proper cleanup:
+
+```python
+with StealthySession(headless=True) as session:
+    page = session.fetch('https://example.com')
+# Browser automatically closed
+```
+
+### Manual Lifecycle
+
+For advanced use cases:
+
+```python
+from scrapling.fetchers import StealthySession
+
+session = StealthySession(headless=True)
+try:
+    session.start()  # Open browser
+    page1 = session.fetch('https://example.com/page1')
+    page2 = session.fetch('https://example.com/page2')
+finally:
+    session.stop()   # Close browser
+```
+
+## Page Pooling (Browser Sessions)
+
+Browser sessions (Stealthy and Dynamic) support page pooling for concurrent requests:
+
+### Pool Configuration
+
+```python
+import asyncio
+from scrapling.fetchers import AsyncStealthySession
+
+async def scrape():
+    async with AsyncStealthySession(
+        headless=True,
+        max_pages=10  # Pool size: 10 concurrent tabs
+    ) as session:
+        # Make 50 concurrent requests
+        # Only 10 tabs are used, reused as requests complete
+        tasks = [session.fetch(f'https://example.com/page{i}') for i in range(50)]
+        results = await asyncio.gather(*tasks)
+
+asyncio.run(scrape())
+```
+
+### Pool Stats
+
+Monitor pool usage:
+
+```python
+async with AsyncStealthySession(max_pages=3) as session:
+    stats = session.get_pool_stats()
+    print(stats)  # {'busy': 0, 'free': 3, 'error': 0}
+    
+    # Start some requests
+    task1 = session.fetch('https://example.com/page1')
+    task2 = session.fetch('https://example.com/page2')
+    
+    stats = session.get_pool_stats()
+    print(stats)  # {'busy': 2, 'free': 1, 'error': 0}
+```
+
+## Per-Request Customization
+
+Override session settings per request:
+
+```python
+with StealthySession(headless=True, timeout=30000) as session:
+    # Use session defaults
+    page1 = session.fetch('https://example.com')
+    
+    # Override settings
+    page2 = session.fetch(
+        'https://slow-site.com',
+        timeout=60000,                 # Longer timeout
+        network_idle=True,             # Wait for network idle
+        wait_selector='.content',      # Wait for selector
+    )
+    
+    # Different proxy
+    page3 = session.fetch(
+        'https://geo-restricted.com',
+        proxy='http://us-proxy:8080'
+    )
+```
+
+## Cookie Management
+
+### Setting Cookies
+
+```python
+cookies = [
+    {
+        'name': 'session_id',
+        'value': 'abc123',
+        'domain': 'example.com',
+        'path': '/',
+    }
+]
+
+with StealthySession(headless=True, cookies=cookies) as session:
+    page = session.fetch('https://example.com')
+```
+
+### Accessing Cookies
+
+Browser sessions provide access to cookies through the page object:
+
+```python
+with StealthySession(headless=True) as session:
+    page = session.fetch('https://example.com')
+    # Cookies are automatically maintained for subsequent requests
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always use context managers">
+    Use `with` statements to ensure proper cleanup of sessions, especially for browser sessions.
+  </Accordion>
+
+  <Accordion title="Reuse sessions for multiple requests">
+    Sessions maintain state and connections. Reuse them instead of creating new ones for each request.
+  </Accordion>
+
+  <Accordion title="Configure defaults wisely">
+    Set sensible defaults at the session level and override only when needed per-request.
+  </Accordion>
+
+  <Accordion title="Use persistent profiles for long-term state">
+    For browser sessions, use `user_data_dir` to maintain state across script runs.
+  </Accordion>
+
+  <Accordion title="Tune page pool size for async">
+    Set `max_pages` based on your concurrency needs and system resources. More tabs = more memory.
+  </Accordion>
+
+  <Accordion title="Monitor pool stats in async">
+    Use `get_pool_stats()` to debug concurrency issues and optimize pool size.
+  </Accordion>
+</AccordionGroup>
+
+## Session Comparison
+
+| Feature | FetcherSession | StealthySession | DynamicSession |
+|---------|----------------|-----------------|----------------|
+| Speed | ⚡⚡⚡ | ⚡⚡ | ⚡ |
+| Connection Pooling | ✅ | ❌ | ❌ |
+| Browser Context | ❌ | ✅ | ✅ |
+| JavaScript | ❌ | ✅ | ✅ |
+| Cloudflare Bypass | ❌ | ✅ | ❌ |
+| Page Pool | ❌ | ✅ | ✅ |
+| Resource Usage | Low | Medium | High |
+| Persistent Profile | ❌ | ✅ | ✅ |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Proxy Rotation" icon="shuffle" href="/fetching/proxy-rotation">
+    Automatically rotate proxies in sessions
+  </Card>
+  <Card title="Spiders" icon="spider" href="/spiders/architecture">
+    Use sessions in spider crawls
+  </Card>
+</CardGroup>

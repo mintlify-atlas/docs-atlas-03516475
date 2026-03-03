@@ -1,0 +1,471 @@
+---
+title: Handling Blocked Requests
+description: Detect, retry, and handle blocked requests in Scrapling
+---
+
+Scrapling provides built-in mechanisms to detect blocked requests and automatically retry them with different strategies.
+
+## Spider Blocked Request Detection
+
+The Spider class has built-in support for detecting and handling blocked requests:
+
+### Default Blocked Status Codes
+
+Scrapling automatically detects these HTTP status codes as blocked:
+
+```python
+BLOCKED_CODES = {401, 403, 407, 429, 444, 500, 502, 503, 504}
+```
+
+**Source:** `scrapling/spiders/spider.py:16`
+
+### Custom Block Detection
+
+Override the `is_blocked()` method to implement custom detection logic:
+
+```python
+from scrapling import Spider, StealthySession
+
+class MySpider(Spider):
+    name = 'custom_block_detection'
+    start_urls = ['https://example.com']
+    
+    async def is_blocked(self, response):
+        """Custom block detection logic"""
+        # Check status code (default behavior)
+        if response.status in {401, 403, 429}:
+            return True
+        
+        # Check for challenge pages
+        if 'captcha' in response.text.lower():
+            return True
+        
+        # Check for specific text
+        if 'Access Denied' in response.text:
+            return True
+        
+        # Check for redirects to block pages
+        if 'blocked.html' in response.url:
+            return True
+        
+        return False
+    
+    async def parse(self, response):
+        yield {'title': response.css('title::text').get()}
+```
+
+**Source:** `scrapling/spiders/spider.py:190-194`
+
+## Retry Configuration
+
+### Max Blocked Retries
+
+Control how many times a blocked request is retried:
+
+```python
+class MySpider(Spider):
+    name = 'retry_spider'
+    max_blocked_retries = 5  # Retry blocked requests up to 5 times
+    start_urls = ['https://example.com']
+    
+    async def parse(self, response):
+        yield {'data': response.css('.content::text').get()}
+```
+
+**Source:** `scrapling/spiders/spider.py:79`
+
+### Retry with Modified Request
+
+Customize the request before retrying:
+
+```python
+from scrapling import Spider, Request
+
+class SmartRetrySpider(Spider):
+    name = 'smart_retry'
+    start_urls = ['https://example.com']
+    max_blocked_retries = 3
+    
+    async def retry_blocked_request(self, request, response):
+        """Modify request before retrying"""
+        # Switch to different session
+        if request.meta.get('retry_count', 0) == 0:
+            request.sid = 'stealth'  # Use stealthier session
+        
+        # Add delay
+        import asyncio
+        await asyncio.sleep(5)
+        
+        # Rotate user agent
+        if 'headers' not in request._session_kwargs:
+            request._session_kwargs['headers'] = {}
+        request._session_kwargs['headers']['User-Agent'] = self._generate_ua()
+        
+        # Track retry count
+        request.meta['retry_count'] = request.meta.get('retry_count', 0) + 1
+        
+        return request
+    
+    def _generate_ua(self):
+        return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    
+    async def parse(self, response):
+        yield {'content': response.css('body::text').get()}
+```
+
+**Source:** `scrapling/spiders/spider.py:196-198`
+
+## Proxy Error Detection
+
+Scrapling automatically detects proxy-related errors:
+
+```python
+PROXY_ERROR_INDICATORS = {
+    "net::err_proxy",
+    "net::err_tunnel",
+    "connection refused",
+    "connection reset",
+    "connection timed out",
+    "failed to connect",
+    "could not resolve proxy",
+}
+```
+
+**Source:** `scrapling/engines/toolbelt/proxy_rotation.py:7-15`
+
+### Automatic Proxy Rotation on Failure
+
+When using `ProxyRotator`, Scrapling automatically rotates proxies on errors:
+
+```python
+from scrapling import StealthySession, ProxyRotator
+
+rotator = ProxyRotator([
+    'http://proxy1:8080',
+    'http://proxy2:8080',
+    'http://proxy3:8080',
+])
+
+with StealthySession(proxy_rotator=rotator) as session:
+    # Automatically retries with next proxy on failure
+    response = session.fetch('https://example.com')
+```
+
+**Implementation:** `scrapling/engines/_browsers/_stealth.py:269-283`
+
+## Fetcher-Level Retry Logic
+
+### Automatic Retries
+
+Fetchers automatically retry failed requests:
+
+```python
+from scrapling import StealthyFetcher
+
+response = StealthyFetcher.fetch(
+    'https://example.com',
+    retries=5,        # Retry up to 5 times (default: 3)
+    retry_delay=2     # Wait 2 seconds between retries (default: 1)
+)
+```
+
+**Configuration:** `scrapling/engines/_browsers/_validators.py:88-89`
+
+### Retry Loop Implementation
+
+Here's how Scrapling retries internally:
+
+```python
+for attempt in range(self._config.retries):
+    try:
+        # Attempt request
+        response = await page.goto(url)
+        return response
+    except Exception as e:
+        if attempt < self._config.retries - 1:
+            if is_proxy_error(e):
+                log.warning(
+                    f"Proxy '{proxy}' failed (attempt {attempt + 1}) | "
+                    f"Retrying in {self._config.retry_delay}s..."
+                )
+            else:
+                log.warning(
+                    f"Attempt {attempt + 1} failed: {e}. "
+                    f"Retrying in {self._config.retry_delay}s..."
+                )
+            await asyncio.sleep(self._config.retry_delay)
+        else:
+            log.error(f"Failed after {self._config.retries} attempts: {e}")
+            raise
+```
+
+**Source:** `scrapling/engines/_browsers/_stealth.py:478-539`
+
+## Error Handling Hooks
+
+### On Error Callback
+
+Handle errors in spiders:
+
+```python
+from scrapling import Spider, Request
+
+class ErrorHandlingSpider(Spider):
+    name = 'error_handler'
+    start_urls = ['https://example.com']
+    
+    async def on_error(self, request, error):
+        """Called when request fails after all retries"""
+        self.logger.error(f"Request failed: {request.url}")
+        self.logger.error(f"Error: {error}")
+        
+        # Log to external service
+        await self._log_to_sentry(request, error)
+        
+        # Save failed URL for later
+        with open('failed_urls.txt', 'a') as f:
+            f.write(f"{request.url}\n")
+    
+    async def _log_to_sentry(self, request, error):
+        # Your error tracking logic
+        pass
+    
+    async def parse(self, response):
+        yield {'data': response.css('.content').get()}
+```
+
+**Source:** `scrapling/spiders/spider.py:178-184`
+
+## Complete Example
+
+Combining all features:
+
+```python
+from scrapling import Spider, StealthySession, ProxyRotator
+import asyncio
+
+class RobustSpider(Spider):
+    name = 'robust_spider'
+    start_urls = ['https://difficult-site.com']
+    
+    # Retry configuration
+    max_blocked_retries = 5
+    download_delay = 1.0
+    
+    def configure_sessions(self, manager):
+        # Basic session
+        from scrapling import FetcherSession
+        manager.add('basic', FetcherSession())
+        
+        # Stealth session with proxy rotation
+        rotator = ProxyRotator([
+            'http://proxy1:8080',
+            'http://proxy2:8080',
+            'http://proxy3:8080',
+        ])
+        
+        manager.add('stealth', StealthySession(
+            proxy_rotator=rotator,
+            solve_cloudflare=True,
+            hide_canvas=True,
+            block_webrtc=True,
+            retries=5,
+            retry_delay=2
+        ))
+    
+    async def is_blocked(self, response):
+        """Custom block detection"""
+        # Status codes
+        if response.status in {401, 403, 429, 503}:
+            return True
+        
+        # Challenge pages
+        blocked_indicators = [
+            'captcha',
+            'access denied',
+            'rate limit',
+            'blocked',
+        ]
+        
+        content_lower = response.text.lower()
+        return any(indicator in content_lower for indicator in blocked_indicators)
+    
+    async def retry_blocked_request(self, request, response):
+        """Modify request before retry"""
+        retry_count = request.meta.get('retry_count', 0)
+        
+        # First retry: switch to stealth session
+        if retry_count == 0:
+            self.logger.info(f"Switching to stealth session for {request.url}")
+            request.sid = 'stealth'
+        
+        # Second retry: enable Cloudflare solving
+        elif retry_count == 1:
+            self.logger.info(f"Enabling Cloudflare solver for {request.url}")
+            request._session_kwargs['solve_cloudflare'] = True
+        
+        # Third+ retry: increase delays
+        else:
+            delay = 5 * (retry_count - 1)
+            self.logger.info(f"Waiting {delay}s before retry")
+            await asyncio.sleep(delay)
+        
+        request.meta['retry_count'] = retry_count + 1
+        return request
+    
+    async def on_error(self, request, error):
+        """Handle final failures"""
+        self.logger.error(
+            f"Request permanently failed: {request.url} | Error: {error}"
+        )
+        
+        # Save for manual review
+        with open('failed_requests.txt', 'a') as f:
+            f.write(f"{request.url}\t{error}\n")
+    
+    async def parse(self, response):
+        """Parse successful responses"""
+        # Extract data
+        yield {
+            'url': response.url,
+            'title': response.css('title::text').get(),
+            'content': response.css('.content::text').getall(),
+            'status': response.status,
+        }
+        
+        # Follow links
+        for link in response.css('a::attr(href)').getall():
+            yield response.follow(link, callback=self.parse)
+
+# Run spider
+if __name__ == '__main__':
+    spider = RobustSpider()
+    result = spider.start()
+    
+    print(f"Scraped {len(result.items)} items")
+    print(f"Errors: {result.stats.error_count}")
+```
+
+## Session-Level Error Handling
+
+For standalone fetchers:
+
+```python
+from scrapling import StealthySession, ProxyRotator
+import asyncio
+
+rotator = ProxyRotator(['http://proxy1:8080', 'http://proxy2:8080'])
+
+async def fetch_with_retry(url, max_retries=3):
+    async with StealthySession(
+        proxy_rotator=rotator,
+        retries=3,
+        retry_delay=2
+    ) as session:
+        for attempt in range(max_retries):
+            try:
+                response = await session.fetch(url)
+                
+                # Check if blocked
+                if response.status in {403, 429}:
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(5 * (attempt + 1))
+                        continue
+                    else:
+                        raise Exception(f"Blocked after {max_retries} attempts")
+                
+                return response
+                
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(3)
+                    continue
+                else:
+                    raise
+
+# Usage
+response = asyncio.run(fetch_with_retry('https://example.com'))
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Implement Custom Block Detection">
+    Don't rely only on status codes:
+    
+    ```python
+    async def is_blocked(self, response):
+        # Check multiple indicators
+        return (
+            response.status in {403, 429} or
+            'captcha' in response.text.lower() or
+            len(response.text) < 100  # Suspiciously small response
+        )
+    ```
+  </Accordion>
+
+  <Accordion title="Use Escalating Retry Strategy">
+    Start simple, escalate to advanced techniques:
+    
+    ```python
+    async def retry_blocked_request(self, request, response):
+        retries = request.meta.get('retry_count', 0)
+        
+        if retries == 0:
+            # Just wait
+            await asyncio.sleep(3)
+        elif retries == 1:
+            # Switch session
+            request.sid = 'stealth'
+        elif retries == 2:
+            # Enable Cloudflare solving
+            request._session_kwargs['solve_cloudflare'] = True
+        
+        request.meta['retry_count'] = retries + 1
+        return request
+    ```
+  </Accordion>
+
+  <Accordion title="Monitor Error Rates">
+    Track and alert on high error rates:
+    
+    ```python
+    async def on_close(self):
+        error_rate = self.stats.error_count / self.stats.request_count
+        
+        if error_rate > 0.3:  # 30% errors
+            self.logger.warning(
+                f"High error rate: {error_rate:.2%}"
+            )
+    ```
+  </Accordion>
+
+  <Accordion title="Combine with Proxy Rotation">
+    Proxies help avoid IP-based blocking:
+    
+    ```python
+    rotator = ProxyRotator(proxies)
+    
+    with StealthySession(proxy_rotator=rotator) as session:
+        # Automatic proxy rotation on errors
+        response = session.fetch(url)
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Anti-Bot Bypass" icon="user-secret" href="/guides/anti-bot-bypass">
+    Bypass anti-bot systems
+  </Card>
+  <Card title="Cloudflare Turnstile" icon="shield-check" href="/guides/cloudflare-turnstile">
+    Solve Cloudflare challenges
+  </Card>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/guides/error-handling">
+    Complete error handling guide
+  </Card>
+  <Card title="Performance" icon="gauge-high" href="/guides/performance-optimization">
+    Optimize retry performance
+  </Card>
+</CardGroup>

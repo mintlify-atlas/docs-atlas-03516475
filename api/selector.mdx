@@ -1,0 +1,695 @@
+---
+title: Selector
+description: Main class for parsing and selecting HTML elements
+---
+
+The `Selector` class is the core component of Scrapling that wraps HTML content and provides powerful methods for selecting and extracting data using CSS, XPath, or text-based queries.
+
+## Constructor
+
+<ParamField path="content" type="str | bytes" required>
+  HTML content as either string or bytes
+</ParamField>
+
+<ParamField path="url" type="str" default="">
+  Store a URL with the HTML data for retrieving later
+</ParamField>
+
+<ParamField path="encoding" type="str" default="utf-8">
+  The encoding type used in HTML parsing
+</ParamField>
+
+<ParamField path="huge_tree" type="bool" default="true">
+  Should always be enabled when parsing large HTML documents. Controls the libxml2 feature that forbids parsing certain large documents to protect from possible memory exhaustion
+</ParamField>
+
+<ParamField path="root" type="HtmlElement" default="None">
+  Used internally to pass etree objects. Don't use unless you know what you're doing
+</ParamField>
+
+<ParamField path="keep_comments" type="bool" default="false">
+  Whether to drop comments while parsing the HTML body
+</ParamField>
+
+<ParamField path="keep_cdata" type="bool" default="false">
+  Whether to drop CDATA while parsing the HTML body
+</ParamField>
+
+<ParamField path="adaptive" type="bool" default="false">
+  Globally turn off the adaptive feature in all functions. Takes higher priority over all adaptive related arguments/functions in the class
+</ParamField>
+
+<ParamField path="storage" type="Any" default="SQLiteStorageSystem">
+  The storage class to be passed for adaptive functionalities
+</ParamField>
+
+<ParamField path="storage_args" type="Dict" default="None">
+  A dictionary of argument-value pairs to be passed for the storage class. If empty, default values will be used
+</ParamField>
+
+## Properties
+
+### tag
+
+```python
+@property
+def tag(self) -> str
+```
+
+Get the tag name of the element.
+
+**Returns:** The element's tag name as a string, or `"#text"` for text nodes
+
+### text
+
+```python
+@property
+def text(self) -> TextHandler
+```
+
+Get text content of the element.
+
+**Returns:** A `TextHandler` object containing the element's text
+
+### attrib
+
+```python
+@property
+def attrib(self) -> AttributesHandler
+```
+
+Get attributes of the element.
+
+**Returns:** An `AttributesHandler` object containing the element's attributes
+
+### html_content
+
+```python
+@property
+def html_content(self) -> TextHandler
+```
+
+Return the inner HTML code of the element.
+
+**Returns:** A `TextHandler` containing the element's inner HTML
+
+### body
+
+```python
+@property
+def body(self) -> str | bytes
+```
+
+Return the raw body of the current Selector without any processing. Useful for binary and non-HTML requests.
+
+**Returns:** The raw body content
+
+### parent
+
+```python
+@property
+def parent(self) -> Optional[Selector]
+```
+
+Return the direct parent of the element.
+
+**Returns:** The parent `Selector` or `None` if there is no parent
+
+### children
+
+```python
+@property
+def children(self) -> Selectors
+```
+
+Return the children elements of the current element.
+
+**Returns:** A `Selectors` object containing child elements, or empty list if none
+
+### siblings
+
+```python
+@property
+def siblings(self) -> Selectors
+```
+
+Return other children of the current element's parent.
+
+**Returns:** A `Selectors` object containing sibling elements, or empty list if none
+
+### below_elements
+
+```python
+@property
+def below_elements(self) -> Selectors
+```
+
+Return all elements under the current element in the DOM tree.
+
+**Returns:** A `Selectors` object containing all descendant elements
+
+### path
+
+```python
+@property
+def path(self) -> Selectors
+```
+
+Returns a list of type `Selectors` that contains the path leading to the current element from the root.
+
+**Returns:** A `Selectors` object representing the element's path
+
+### next
+
+```python
+@property
+def next(self) -> Optional[Selector]
+```
+
+Returns the next element of the current element in the children of the parent.
+
+**Returns:** The next `Selector` or `None` if there isn't one
+
+### previous
+
+```python
+@property
+def previous(self) -> Optional[Selector]
+```
+
+Returns the previous element of the current element in the children of the parent.
+
+**Returns:** The previous `Selector` or `None` if there isn't one
+
+## Selection Methods
+
+### css()
+
+```python
+def css(
+    self,
+    selector: str,
+    identifier: str = "",
+    adaptive: bool = False,
+    auto_save: bool = False,
+    percentage: int = 0,
+) -> Selectors
+```
+
+Search the current tree with CSS3 selectors.
+
+<ParamField path="selector" type="str" required>
+  The CSS3 selector to be used
+</ParamField>
+
+<ParamField path="identifier" type="str" default="">
+  A string that will be used to save/retrieve element's data in adaptive, otherwise the selector will be used. Recommended if you plan to use a different selector later and want to relocate the same element(s)
+</ParamField>
+
+<ParamField path="adaptive" type="bool" default="false">
+  Enabled will make the function try to relocate the element if it was saved before
+</ParamField>
+
+<ParamField path="auto_save" type="bool" default="false">
+  Automatically save new elements for adaptive later
+</ParamField>
+
+<ParamField path="percentage" type="int" default="0">
+  The minimum percentage to accept while adaptive is working. Don't play with this number unless you know what you're doing
+</ParamField>
+
+**Returns:** A `Selectors` object
+
+### xpath()
+
+```python
+def xpath(
+    self,
+    selector: str,
+    identifier: str = "",
+    adaptive: bool = False,
+    auto_save: bool = False,
+    percentage: int = 0,
+    **kwargs: Any,
+) -> Selectors
+```
+
+Search the current tree with XPath selectors.
+
+<ParamField path="selector" type="str" required>
+  The XPath selector to be used
+</ParamField>
+
+<ParamField path="identifier" type="str" default="">
+  A string that will be used to save/retrieve element's data in adaptive, otherwise the selector will be used. Recommended if you plan to use a different selector later and want to relocate the same element(s)
+</ParamField>
+
+<ParamField path="adaptive" type="bool" default="false">
+  Enabled will make the function try to relocate the element if it was saved before
+</ParamField>
+
+<ParamField path="auto_save" type="bool" default="false">
+  Automatically save new elements for adaptive later
+</ParamField>
+
+<ParamField path="percentage" type="int" default="0">
+  The minimum percentage to accept while adaptive is working. Don't play with this number unless you know what you're doing
+</ParamField>
+
+<ParamField path="**kwargs" type="Any">
+  Additional keyword arguments will be passed as XPath variables in the XPath expression
+</ParamField>
+
+**Returns:** A `Selectors` object
+
+### find_all()
+
+```python
+def find_all(
+    self,
+    *args: str | Iterable[str] | Pattern | Callable | Dict[str, str],
+    **kwargs: str,
+) -> Selectors
+```
+
+Find elements by filters of your creation.
+
+<ParamField path="args" type="str | Iterable[str] | Pattern | Callable | Dict[str, str]">
+  Tag name(s), iterable of tag names, regex patterns, function, or a dictionary of elements' attributes. Leave empty for selecting all
+</ParamField>
+
+<ParamField path="kwargs" type="str">
+  The attributes you want to filter elements based on
+</ParamField>
+
+**Returns:** A `Selectors` object of the elements or empty list
+
+### find()
+
+```python
+def find(
+    self,
+    *args: str | Iterable[str] | Pattern | Callable | Dict[str, str],
+    **kwargs: str,
+) -> Optional[Selector]
+```
+
+Find elements by filters of your creation, then return the first result.
+
+<ParamField path="args" type="str | Iterable[str] | Pattern | Callable | Dict[str, str]">
+  Tag name(s), iterable of tag names, regex patterns, function, or a dictionary of elements' attributes. Leave empty for selecting all
+</ParamField>
+
+<ParamField path="kwargs" type="str">
+  The attributes you want to filter elements based on
+</ParamField>
+
+**Returns:** The first `Selector` object or `None` if the result didn't match
+
+### find_by_text()
+
+```python
+def find_by_text(
+    self,
+    text: str,
+    first_match: bool = True,
+    partial: bool = False,
+    case_sensitive: bool = False,
+    clean_match: bool = True,
+) -> Union[Selectors, Selector]
+```
+
+Find elements that have text content fully/partially matching the input.
+
+<ParamField path="text" type="str" required>
+  Text query to match
+</ParamField>
+
+<ParamField path="first_match" type="bool" default="true">
+  Returns the first element that matches conditions
+</ParamField>
+
+<ParamField path="partial" type="bool" default="false">
+  If enabled, the function returns elements that contain the input text
+</ParamField>
+
+<ParamField path="case_sensitive" type="bool" default="false">
+  If enabled, the letters case will be taken into consideration
+</ParamField>
+
+<ParamField path="clean_match" type="bool" default="true">
+  If enabled, this will ignore all whitespaces and consecutive spaces while matching
+</ParamField>
+
+**Returns:** A `Selector` if `first_match=True`, otherwise `Selectors`
+
+### find_by_regex()
+
+```python
+def find_by_regex(
+    self,
+    query: str | Pattern[str],
+    first_match: bool = True,
+    case_sensitive: bool = False,
+    clean_match: bool = True,
+) -> Union[Selectors, Selector]
+```
+
+Find elements whose text content matches the input regex pattern.
+
+<ParamField path="query" type="str | Pattern[str]" required>
+  Regex query/pattern to match
+</ParamField>
+
+<ParamField path="first_match" type="bool" default="true">
+  Return the first element that matches conditions
+</ParamField>
+
+<ParamField path="case_sensitive" type="bool" default="false">
+  If enabled, the letters case will be taken into consideration in the regex
+</ParamField>
+
+<ParamField path="clean_match" type="bool" default="true">
+  If enabled, this will ignore all whitespaces and consecutive spaces while matching
+</ParamField>
+
+**Returns:** A `Selector` if `first_match=True`, otherwise `Selectors`
+
+### find_similar()
+
+```python
+def find_similar(
+    self,
+    similarity_threshold: float = 0.2,
+    ignore_attributes: List | Tuple = ("href", "src"),
+    match_text: bool = False,
+) -> Selectors
+```
+
+Find elements that are in the same tree depth with the same tag name and match the current element attributes with a percentage higher than the threshold.
+
+<ParamField path="similarity_threshold" type="float" default="0.2">
+  The percentage to use while comparing element attributes. Don't play with this number unless you're getting unwanted results
+</ParamField>
+
+<ParamField path="ignore_attributes" type="List | Tuple" default="('href', 'src')">
+  Attribute names to ignore while matching attributes. Default ignores `href` and `src` as URLs can change between elements
+</ParamField>
+
+<ParamField path="match_text" type="bool" default="false">
+  If True, element text content will be taken into calculation while matching. Not recommended in normal cases
+</ParamField>
+
+**Returns:** A `Selectors` container of `Selector` objects or empty list
+
+## Extraction Methods
+
+### get_all_text()
+
+```python
+def get_all_text(
+    self,
+    separator: str = "\n",
+    strip: bool = False,
+    ignore_tags: Tuple = ("script", "style"),
+    valid_values: bool = True,
+) -> TextHandler
+```
+
+Get all child strings of this element, concatenated using the given separator.
+
+<ParamField path="separator" type="str" default="\n">
+  Strings will be concatenated using this separator
+</ParamField>
+
+<ParamField path="strip" type="bool" default="false">
+  If True, strings will be stripped before being concatenated
+</ParamField>
+
+<ParamField path="ignore_tags" type="Tuple" default="('script', 'style')">
+  A tuple of all tag names you want to ignore
+</ParamField>
+
+<ParamField path="valid_values" type="bool" default="true">
+  If enabled, elements with text-content that is empty or only whitespaces will be ignored
+</ParamField>
+
+**Returns:** A `TextHandler` object
+
+### get()
+
+```python
+def get(self) -> TextHandler
+```
+
+Serialize this element to a string. For text nodes, returns the text value. For HTML elements, returns the outer HTML.
+
+**Returns:** A `TextHandler` containing the serialized string
+
+### getall()
+
+```python
+def getall(self) -> TextHandlers
+```
+
+Return a single-element list containing this element's serialized string.
+
+**Returns:** A `TextHandlers` list with one element
+
+### json()
+
+```python
+def json(self) -> Dict
+```
+
+Return JSON response if the response is jsonable.
+
+**Returns:** A dictionary parsed from JSON
+
+**Raises:** Exception if content is not valid JSON
+
+### re()
+
+```python
+def re(
+    self,
+    regex: str | Pattern[str],
+    replace_entities: bool = True,
+    clean_match: bool = False,
+    case_sensitive: bool = True,
+) -> TextHandlers
+```
+
+Apply the given regex to the current text and return a list of strings with the matches.
+
+<ParamField path="regex" type="str | Pattern[str]" required>
+  Can be either a compiled regular expression or a string
+</ParamField>
+
+<ParamField path="replace_entities" type="bool" default="true">
+  If enabled, character entity references are replaced by their corresponding character
+</ParamField>
+
+<ParamField path="clean_match" type="bool" default="false">
+  If enabled, this will ignore all whitespaces and consecutive spaces while matching
+</ParamField>
+
+<ParamField path="case_sensitive" type="bool" default="true">
+  If disabled, the function will set the regex to ignore the letters case while compiling it
+</ParamField>
+
+**Returns:** A `TextHandlers` list of matches
+
+### re_first()
+
+```python
+def re_first(
+    self,
+    regex: str | Pattern[str],
+    default=None,
+    replace_entities: bool = True,
+    clean_match: bool = False,
+    case_sensitive: bool = True,
+) -> TextHandler
+```
+
+Apply the given regex to text and return the first match if found, otherwise return the default value.
+
+<ParamField path="regex" type="str | Pattern[str]" required>
+  Can be either a compiled regular expression or a string
+</ParamField>
+
+<ParamField path="default" type="Any" default="None">
+  The default value to be returned if there is no match
+</ParamField>
+
+<ParamField path="replace_entities" type="bool" default="true">
+  If enabled, character entity references are replaced by their corresponding character
+</ParamField>
+
+<ParamField path="clean_match" type="bool" default="false">
+  If enabled, this will ignore all whitespaces and consecutive spaces while matching
+</ParamField>
+
+<ParamField path="case_sensitive" type="bool" default="true">
+  If disabled, the function will set the regex to ignore the letters case while compiling it
+</ParamField>
+
+**Returns:** A `TextHandler` with the first match or the default value
+
+## Utility Methods
+
+### prettify()
+
+```python
+def prettify(self) -> TextHandler
+```
+
+Return a prettified version of the element's inner HTML code.
+
+**Returns:** A `TextHandler` with formatted HTML
+
+### has_class()
+
+```python
+def has_class(self, class_name: str) -> bool
+```
+
+Check if the element has a specific class.
+
+<ParamField path="class_name" type="str" required>
+  The class name to check for
+</ParamField>
+
+**Returns:** `True` if element has class with that name, otherwise `False`
+
+### urljoin()
+
+```python
+def urljoin(self, relative_url: str) -> str
+```
+
+Join this Selector's url with a relative url to form an absolute full URL.
+
+<ParamField path="relative_url" type="str" required>
+  The relative URL to join
+</ParamField>
+
+**Returns:** The absolute URL as a string
+
+### iterancestors()
+
+```python
+def iterancestors(self) -> Generator[Selector, None, None]
+```
+
+Return a generator that loops over all ancestors of the element, starting with the element's parent.
+
+**Returns:** A generator yielding `Selector` objects
+
+### find_ancestor()
+
+```python
+def find_ancestor(self, func: Callable[[Selector], bool]) -> Optional[Selector]
+```
+
+Loop over all ancestors of the element until one matches the passed function.
+
+<ParamField path="func" type="Callable[[Selector], bool]" required>
+  A function that takes each ancestor as an argument and returns True/False
+</ParamField>
+
+**Returns:** The first ancestor that matches the function or `None` otherwise
+
+## Adaptive Methods
+
+### save()
+
+```python
+def save(self, element: HtmlElement, identifier: str) -> None
+```
+
+Saves the element's unique properties to the storage for retrieval and relocation later.
+
+<ParamField path="element" type="HtmlElement" required>
+  The element itself to save to storage. Can be a `Selector` or pure `HtmlElement`
+</ParamField>
+
+<ParamField path="identifier" type="str" required>
+  The identifier that will be used to retrieve the element later from the storage
+</ParamField>
+
+### retrieve()
+
+```python
+def retrieve(self, identifier: str) -> Optional[Dict[str, Any]]
+```
+
+Using the identifier, search the storage and return the unique properties of the element.
+
+<ParamField path="identifier" type="str" required>
+  The identifier used to retrieve the element from the storage
+</ParamField>
+
+**Returns:** A dictionary of the unique properties or `None`
+
+### relocate()
+
+```python
+def relocate(
+    self,
+    element: Union[Dict, HtmlElement, Selector],
+    percentage: int = 0,
+    selector_type: bool = False,
+) -> Union[List[HtmlElement], Selectors]
+```
+
+Search again for the element in the page tree, used automatically on page structure change.
+
+<ParamField path="element" type="Union[Dict, HtmlElement, Selector]" required>
+  The element to relocate in the tree
+</ParamField>
+
+<ParamField path="percentage" type="int" default="0">
+  The minimum percentage to accept. Don't play with this number unless you know what you're doing
+</ParamField>
+
+<ParamField path="selector_type" type="bool" default="false">
+  If True, the return result will be converted to `Selectors` object
+</ParamField>
+
+**Returns:** List of pure HTML elements that got the highest matching score or `Selectors` object
+
+## Magic Methods
+
+### \_\_getitem\_\_()
+
+```python
+def __getitem__(self, key: str) -> TextHandler
+```
+
+Get element attribute by key.
+
+**Example:**
+```python
+selector['href']  # Returns the href attribute value
+```
+
+### \_\_contains\_\_()
+
+```python
+def __contains__(self, key: str) -> bool
+```
+
+Check if element has an attribute.
+
+**Example:**
+```python
+'class' in selector  # Returns True if element has class attribute
+```
+
+## Aliases
+
+For compatibility with Scrapy/Parsel:
+- `extract()` - alias for `getall()`
+- `extract_first()` - alias for `get()`

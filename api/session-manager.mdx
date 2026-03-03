@@ -1,0 +1,487 @@
+---
+title: SessionManager
+description: Manages multiple session instances for Scrapling spiders
+---
+
+The `SessionManager` class manages pre-configured session instances for spiders. It allows you to register multiple sessions (FetcherSession, AsyncStealthySession, etc.) and route requests to specific sessions using session IDs.
+
+## Class Definition
+
+```python
+from scrapling.spiders.session import SessionManager
+
+class SessionManager:
+    """Manages pre-configured session instances."""
+```
+
+## Constructor
+
+```python
+def __init__(self) -> None
+```
+
+Creates an empty session manager. Sessions must be added via the `add()` method.
+
+## Methods
+
+### add
+
+```python
+def add(
+    self,
+    session_id: str,
+    session: Session,
+    *,
+    default: bool = False,
+    lazy: bool = False
+) -> SessionManager
+```
+
+Register a session instance.
+
+<ParamField path="session_id" type="str" required>
+  Unique name to reference this session in requests.
+</ParamField>
+
+<ParamField path="session" type="Session" required>
+  Pre-configured session instance (FetcherSession, AsyncStealthySession, or AsyncDynamicSession).
+</ParamField>
+
+<ParamField path="default" type="bool" default="False">
+  If True, this becomes the default session. The first session added is automatically the default.
+</ParamField>
+
+<ParamField path="lazy" type="bool" default="False">
+  If True, the session will only be started when a request uses its ID (useful for expensive sessions like browser-based ones).
+</ParamField>
+
+**Returns:** self (for chaining)
+
+**Raises:** `ValueError` if session_id already exists
+
+**Example:**
+```python
+from scrapling.spiders.session import SessionManager
+from scrapling.fetchers import FetcherSession, AsyncStealthySession
+
+manager = SessionManager()
+
+# Add default session
+manager.add("default", FetcherSession())
+
+# Add stealth session (lazy loading)
+manager.add("stealth", AsyncStealthySession(), lazy=True)
+
+# Chain multiple adds
+manager.add("api", FetcherSession()).add("browser", AsyncDynamicSession(), lazy=True)
+```
+
+### remove
+
+```python
+def remove(self, session_id: str) -> None
+```
+
+Remove a session by ID.
+
+<ParamField path="session_id" type="str" required>
+  ID of the session to remove.
+</ParamField>
+
+**Raises:** `KeyError` if session_id not found
+
+### pop
+
+```python
+def pop(self, session_id: str) -> Session
+```
+
+Remove and return a session.
+
+<ParamField path="session_id" type="str" required>
+  ID of the session to remove and return.
+</ParamField>
+
+**Returns:** The removed session instance
+
+**Raises:** `KeyError` if session_id not found
+
+**Example:**
+```python
+# Remove and close a session
+old_session = manager.pop("outdated")
+await old_session.__aexit__(None, None, None)
+```
+
+### get
+
+```python
+def get(self, session_id: str) -> Session
+```
+
+Get a session by ID.
+
+<ParamField path="session_id" type="str" required>
+  ID of the session to retrieve.
+</ParamField>
+
+**Returns:** The session instance
+
+**Raises:** `KeyError` if session_id not found (with helpful error message listing available sessions)
+
+**Example:**
+```python
+session = manager.get("stealth")
+# Use session directly if needed
+```
+
+### fetch
+
+```python
+async def fetch(self, request: Request) -> Response
+```
+
+Fetch a request using the appropriate session. Automatically starts lazy sessions on first use.
+
+<ParamField path="request" type="Request" required>
+  The request to fetch.
+</ParamField>
+
+**Returns:** Response object with merged metadata from the request
+
+**Process:**
+1. Determine session ID from request (or use default)
+2. Get the session instance
+3. Start lazy session if needed (thread-safe)
+4. Fetch using the session
+5. Merge request.meta into response.meta
+6. Attach request to response.request
+
+### start
+
+```python
+async def start(self) -> None
+```
+
+Start all non-lazy sessions. Called automatically by the async context manager.
+
+**Example:**
+```python
+manager = SessionManager()
+manager.add("default", FetcherSession())
+manager.add("lazy", AsyncStealthySession(), lazy=True)
+
+await manager.start()  # Only starts "default", not "lazy"
+```
+
+### close
+
+```python
+async def close(self) -> None
+```
+
+Close all registered sessions. Called automatically by the async context manager.
+
+## Properties
+
+### default_session_id
+
+```python
+@property
+def default_session_id(self) -> str
+```
+
+Get the ID of the default session.
+
+**Returns:** Default session ID
+
+**Raises:** `RuntimeError` if no sessions are registered
+
+### session_ids
+
+```python
+@property
+def session_ids(self) -> list[str]
+```
+
+Get list of all registered session IDs.
+
+**Returns:** List of session ID strings
+
+## Special Methods
+
+### Async Context Manager
+
+```python
+async def __aenter__(self) -> SessionManager
+async def __aexit__(self, *exc) -> None
+```
+
+Supports async context manager protocol for automatic start/close.
+
+**Example:**
+```python
+manager = SessionManager()
+manager.add("default", FetcherSession())
+
+async with manager:
+    # Sessions are started
+    response = await manager.fetch(request)
+    # Sessions are closed on exit
+```
+
+### Contains
+
+```python
+def __contains__(self, session_id: str) -> bool
+```
+
+Check if a session ID is registered.
+
+**Example:**
+```python
+if "stealth" in manager:
+    print("Stealth session available")
+```
+
+### Length
+
+```python
+def __len__(self) -> int
+```
+
+Get the number of registered sessions.
+
+**Example:**
+```python
+print(f"Manager has {len(manager)} sessions")
+```
+
+## Usage Examples
+
+### Basic Setup in Spider
+
+```python
+from scrapling.spiders import Spider
+from scrapling.fetchers import FetcherSession
+
+class MySpider(Spider):
+    name = "example"
+    
+    def configure_sessions(self, manager):
+        # The manager parameter is a SessionManager instance
+        manager.add("default", FetcherSession())
+```
+
+### Multiple Sessions
+
+```python
+from scrapling.spiders import Spider
+from scrapling.fetchers import FetcherSession, AsyncStealthySession, AsyncDynamicSession
+
+class MySpider(Spider):
+    name = "multi_session"
+    
+    def configure_sessions(self, manager):
+        # Fast session for APIs
+        manager.add("api", FetcherSession())
+        
+        # Stealth session for protected pages (lazy load)
+        manager.add("stealth", AsyncStealthySession(), lazy=True)
+        
+        # Browser session for JS-heavy pages (lazy load)
+        manager.add("browser", AsyncDynamicSession(), lazy=True)
+    
+    async def parse(self, response):
+        # Use different sessions for different requests
+        yield Request(
+            "https://api.example.com/data",
+            sid="api",
+            callback=self.parse_api
+        )
+        
+        yield Request(
+            "https://protected.example.com",
+            sid="stealth",
+            callback=self.parse_stealth
+        )
+        
+        yield Request(
+            "https://spa.example.com",
+            sid="browser",
+            callback=self.parse_spa
+        )
+```
+
+### Session-Specific Configuration
+
+```python
+def configure_sessions(self, manager):
+    # Configure HTTP session with custom settings
+    http_session = FetcherSession(
+        headers={"User-Agent": "MyBot/1.0"},
+        follow_redirects=True,
+        timeout=30
+    )
+    manager.add("http", http_session)
+    
+    # Configure stealth session with custom fingerprint
+    stealth_session = AsyncStealthySession(
+        fingerprint={
+            "os": "windows",
+            "browser": "chrome"
+        }
+    )
+    manager.add("stealth", stealth_session, lazy=True)
+```
+
+### Dynamic Session Switching
+
+```python
+class MySpider(Spider):
+    def configure_sessions(self, manager):
+        manager.add("fast", FetcherSession())
+        manager.add("slow", AsyncStealthySession(), lazy=True)
+    
+    async def parse(self, response):
+        for url in response.css("a::attr(href)").getall():
+            # Use fast session for most pages
+            sid = "fast"
+            
+            # Switch to slow session for specific patterns
+            if "protected" in url or "login" in url:
+                sid = "slow"
+            
+            yield Request(response.urljoin(url), sid=sid)
+```
+
+### Manual Session Management (Advanced)
+
+```python
+import anyio
+from scrapling.spiders.session import SessionManager
+from scrapling.fetchers import FetcherSession
+from scrapling.spiders import Request
+
+async def main():
+    manager = SessionManager()
+    manager.add("default", FetcherSession())
+    
+    async with manager:
+        # Create request
+        request = Request("https://example.com")
+        request.sid = "default"
+        request.update_fingerprint()
+        
+        # Fetch manually
+        response = await manager.fetch(request)
+        print(response.text)
+
+anyio.run(main)
+```
+
+### Lazy Loading Benefits
+
+```python
+class MySpider(Spider):
+    def configure_sessions(self, manager):
+        # Regular session - starts immediately
+        manager.add("fast", FetcherSession())
+        
+        # Lazy session - only starts when first used
+        # This saves resources if the session is never needed
+        manager.add("heavy", AsyncDynamicSession(), lazy=True)
+    
+    async def parse(self, response):
+        # If we never yield a request with sid="heavy",
+        # that browser session never starts!
+        
+        if response.css(".needs-js"):
+            # Browser session starts here on first use
+            yield Request(
+                response.url,
+                sid="heavy",
+                callback=self.parse_js
+            )
+```
+
+## Session Types
+
+The manager supports these session types:
+
+### FetcherSession
+
+```python
+from scrapling.fetchers import FetcherSession
+
+# HTTP client for static content
+session = FetcherSession(
+    headers={"User-Agent": "MyBot"},
+    timeout=30,
+    follow_redirects=True
+)
+manager.add("http", session)
+```
+
+### AsyncStealthySession
+
+```python
+from scrapling.fetchers import AsyncStealthySession
+
+# Stealth browser session
+session = AsyncStealthySession(
+    headless=True,
+    fingerprint={"os": "windows", "browser": "chrome"}
+)
+manager.add("stealth", session, lazy=True)
+```
+
+### AsyncDynamicSession
+
+```python
+from scrapling.fetchers import AsyncDynamicSession
+
+# Full browser session for JS rendering
+session = AsyncDynamicSession(
+    headless=True,
+    auto_scroll=True
+)
+manager.add("browser", session, lazy=True)
+```
+
+## Thread Safety
+
+Lazy session initialization is thread-safe via async lock:
+
+```python
+# Multiple concurrent requests can safely use the same lazy session
+# Only one will initialize it
+async with self._lazy_lock:
+    if not session._is_alive:
+        await session.__aenter__()
+```
+
+## Error Handling
+
+```python
+try:
+    session = manager.get("nonexistent")
+except KeyError as e:
+    # Error message includes available sessions:
+    # "Session 'nonexistent' not found. Available: default, stealth, browser"
+    print(e)
+
+try:
+    manager.add("default", FetcherSession())
+    manager.add("default", FetcherSession())  # Duplicate!
+except ValueError as e:
+    # "Session 'default' already registered"
+    print(e)
+```
+
+## See Also
+
+- [Spider](/api/spider) - Using sessions in spiders
+- [Request](/api/request) - Specifying session IDs in requests
+- [FetcherSession](https://scrapling.com/reference/fetcher) - HTTP session documentation
+- [AsyncStealthySession](https://scrapling.com/reference/stealthysession) - Stealth browser session
